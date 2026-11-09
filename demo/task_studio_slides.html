@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Studio 블록과 연결</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 16:9 슬라이드. 1280×720 을 화면에 맞춰 scale. ←/→, Space, 클릭으로 넘김. 엔지니어 대상: 블록 정의와 연결 방식만. */
+:root {
+  --bg: #0f1412; --slide: #171d1a; --fg: #e9ece9; --muted: #9aa49e; --line: #2c3430;
+  --accent: #5ec29f; --base: #5ec29f; --task: #f1a33a; --cond: #c29ae6; --ctrl: #6fa8ff; --val: #e8d27a;
+  --code-bg: #0f1412;
+  --font: "IBM Plex Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); overflow: hidden; }
+#stage { position: fixed; inset: 0; display: grid; place-items: center; }
+.slide { width: 1280px; height: 720px; background: var(--slide); border-radius: 6px; box-sizing: border-box; padding: 52px 72px 44px; display: none; flex-direction: column; gap: 18px; position: absolute; transform-origin: center; box-shadow: 0 10px 50px rgba(0,0,0,.45); }
+.slide.on { display: flex; }
+.eyebrow { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+h1 { font-size: 54px; line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 34px; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 18px; margin: 0 0 8px; font-weight: 600; color: var(--muted); }
+p, li { font-size: 19px; line-height: 1.5; } p { margin: 0; }
+ul { margin: 0; padding-left: 24px; } li { margin: 3px 0; }
+.lead { font-size: 25px; } .muted { color: var(--muted); } .small { font-size: 16px; }
+.cols { display: grid; gap: 24px; flex: 1; min-height: 0; } .cols > * { min-width: 0; }
+.c2 { grid-template-columns: 1fr 1fr; } .c21 { grid-template-columns: 1.5fr 1fr; } .c12 { grid-template-columns: 1fr 1.3fr; } .c11 { grid-template-columns: 1.2fr 1fr; }
+.box { border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; min-width: 0; }
+.box.base { border-color: var(--base); } .box.task { border-color: var(--task); }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; }
+.tag.base { background: color-mix(in srgb, var(--base) 22%, transparent); color: var(--base); }
+.tag.task { background: color-mix(in srgb, var(--task) 22%, transparent); color: var(--task); }
+.tag.cond { background: color-mix(in srgb, var(--cond) 22%, transparent); color: var(--cond); }
+.tag.ctrl { background: color-mix(in srgb, var(--ctrl) 22%, transparent); color: var(--ctrl); }
+table { border-collapse: collapse; width: 100%; font-size: 16px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 9px; border-bottom: 1px solid var(--line); font-size: 13px; letter-spacing: .04em; }
+td { padding: 5px 9px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }
+td:first-child, th:first-child { white-space: nowrap; }
+code { font-family: var(--mono); font-size: .92em; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 1px 5px; border-radius: 3px; }
+pre { margin: 0; font: 12.5px/1.4 var(--mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow: hidden; min-width: 0; }
+pre .k { color: var(--ctrl); } pre .a { color: var(--base); } pre .t { color: var(--task); } pre .c { color: var(--cond); } pre .v { color: var(--val); } pre .cm { color: var(--muted); } pre .kw { color: #ff9ab8; } pre .s { color: #f0c987; }
+.foot { position: absolute; left: 72px; right: 72px; bottom: 18px; display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.num { position: fixed; right: 18px; bottom: 12px; font: 13px var(--mono); color: var(--muted); }
+kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--muted); }
+iframe { width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 8px; background: #f3f4f2; }
+a { color: var(--accent); }
+.rule { border-left: 3px solid var(--accent); padding: 6px 14px; color: var(--fg); font-size: 17px; line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- 1 제목 -->
+<section class="slide on" style="justify-content:center">
+  <div class="eyebrow">Task Studio · 설계 공유 · 2026-11</div>
+  <h1>로봇 동작을 블록으로 정의하고,<br>블록을 어떻게 잇는가</h1>
+  <p class="lead" style="max-width:920px">블록 하나의 계약(입력·출력·실행), 블록 사이를 흐르는 값의 타입, 그리고 블록을 엮는 노드 8개와 선 3종. 이 세 가지만 다룬다.</p>
+  <div class="foot"><span>Dexmate Vega · 실로봇 · 로봇 edge에서 실행</span><span><kbd>→</kbd> 다음 장</span></div>
+</section>
+
+<!-- 2 블록 = 스킬 계약 -->
+<section class="slide">
+  <div class="eyebrow">1 · 블록의 정의</div>
+  <h2>블록은 파이썬 클래스 하나. 종류는 동작과 조건 둘뿐</h2>
+  <div class="cols c21">
+<pre><span class="cm"># task_studio/core/skill.py</span>
+<span class="kw">class</span> Result(BaseModel):
+    status: Literal[<span class="s">"ok"</span>, <span class="s">"fail"</span>, <span class="s">"aborted"</span>]
+    reason: str = <span class="s">""</span>                      <span class="cm"># 실패 이유 어휘는 스킬마다 고정</span>
+
+<span class="kw">class</span> ActionResult(Result):              <span class="cm"># 모든 동작의 출력이 상속</span>
+    stopped_by: str                       <span class="cm"># reached / &lt;가드&gt; / unreachable / aborted</span>
+    pose_at_stop: Pose | None = None
+
+<span class="kw">class</span> Skill:                              <span class="cm"># 동작(Action)</span>
+    name: ClassVar[str]
+    Input: ClassVar[type[BaseModel]]      <span class="cm"># pydantic 모델 = 입력 포트</span>
+    Output: ClassVar[type[Result]]        <span class="cm"># pydantic 모델 = 출력 포트</span>
+    requires: ClassVar[frozenset[str]]    <span class="cm"># {"left_arm", "suction"} 병렬 충돌 검사</span>
+    <span class="kw">def</span> run(self, ctx: Context, inp: BaseModel) -&gt; Result: ...   <span class="cm"># 블로킹</span>
+
+<span class="kw">class</span> Condition:                          <span class="cm"># 조건</span>
+    name: ClassVar[str]
+    Input: ClassVar[type[BaseModel]]
+    <span class="kw">def</span> check(self, ctx: Context, inp: BaseModel) -&gt; bool: ...   <span class="cm"># 즉시</span></pre>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <table>
+        <tr><th></th><th>동작</th><th>조건</th></tr>
+        <tr><td class="muted">실행</td><td><code>run()</code> 끝날 때까지 블로킹</td><td><code>check()</code> 지금 상태를 보고 즉시</td></tr>
+        <tr><td class="muted">출력</td><td><code>ActionResult</code> + 스킬별 필드</td><td>bool</td></tr>
+        <tr><td class="muted">꽂히는 곳</td><td>트리의 잎</td><td>동작의 <code>guards</code>, 또는 <code>Condition</code> 노드</td></tr>
+      </table>
+      <div class="rule">스킬은 트리를 모른다. <code>run()</code>은 그냥 함수다. 엮는 방식이 바뀌어도 스킬은 그대로.</div>
+      <div class="rule">실패는 예외가 아니라 <code>Result.reason</code>. 어떻게 복구할지는 트리가 정한다.</div>
+      <div class="rule">입·출력이 pydantic이라 스키마가 곧 포트다. 편집기 툴박스와 타입 검사가 여기서 나온다.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 동작 공통 계약 -->
+<section class="slide">
+  <div class="eyebrow">2 · 동작의 공통 계약</div>
+  <h2>모든 동작은 <code>guards</code>·<code>timeout</code>을 받고 <code>stopped_by</code>를 돌려준다</h2>
+  <div class="cols c21">
+<pre><span class="cm"># 긴 동작의 뼈대. 모든 동작이 이 모양이다.</span>
+<span class="kw">def</span> run(self, ctx, inp):
+    arm = ctx.robot.arm
+    arm.start_line(inp.pose, inp.speed)          <span class="cm"># 하드웨어에 명령</span>
+    t0 = now()
+    <span class="kw">while not</span> arm.done():
+        ctx.check()                              <span class="cm"># 일시정지 / E-stop / 힘 한계 → Aborted 예외</span>
+        <span class="kw">for</span> g <span class="kw">in</span> inp.guards:                    <span class="cm"># 가드: 매 tick 묻는다</span>
+            <span class="kw">if</span> g.check(ctx):
+                arm.stop()
+                <span class="kw">return</span> ActionResult(status=<span class="s">"ok"</span>, stopped_by=g.name,
+                                    pose_at_stop=arm.pose())
+        <span class="kw">if</span> now() - t0 &gt; inp.timeout:
+            arm.stop()
+            <span class="kw">return</span> ActionResult(status=<span class="s">"fail"</span>, reason=<span class="s">"timeout"</span>,
+                                stopped_by=<span class="s">"timeout"</span>)
+        sleep(TICK)
+    <span class="kw">return</span> ActionResult(status=<span class="s">"ok"</span>, stopped_by=<span class="s">"reached"</span>,
+                        pose_at_stop=arm.pose())</pre>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <table>
+        <tr><th><code>stopped_by</code></th><th>뜻</th><th>status</th></tr>
+        <tr><td><code>reached</code></td><td>목표에 도달</td><td>ok</td></tr>
+        <tr><td><code>&lt;가드 이름&gt;</code></td><td>가드가 울려 멈춤. 예: <code>ForceOver</code> = 접촉</td><td>ok</td></tr>
+        <tr><td><code>unreachable</code></td><td>IK 해 없음, 관절 한계</td><td>fail</td></tr>
+        <tr><td><code>timeout</code></td><td>시간 초과</td><td>fail</td></tr>
+        <tr><td><code>aborted</code></td><td><code>ctx.check()</code>가 예외를 던짐</td><td>aborted</td></tr>
+      </table>
+      <div class="rule"><b>가드가 울리는 건 실패가 아니다.</b> "창에 들어올 때까지 기어가라"는 BaseMove + BEVInWindow 가드이고, 가드가 울리면 성공이다.</div>
+      <div class="rule"><code>ctx.check()</code>와 가드는 다르다. 전자는 운영자·안전(선점), 후자는 그 동작을 멈추는 조건. 결과도 <code>aborted</code> vs <code>stopped_by</code>로 다르다.</div>
+      <p class="muted small">숫자(오프셋·높이·힘·속도)는 전부 입력 필드. 기본값은 params.yaml, 프로그램이 주면 그 값이 이긴다. 기존 동작 + 조건으로 적을 수 있으면 새 블록을 만들지 않는다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4 블록 하나 짜는 법 -->
+<section class="slide">
+  <div class="eyebrow">3 · 블록 하나 짜는 법</div>
+  <h2>동작 하나 25줄, 조건 하나 10줄</h2>
+  <div class="cols" style="grid-template-columns:1.1fr 1fr">
+<pre><span class="cm"># task_studio/skills/motion/move_ee.py</span>
+<span class="kw">class</span> MoveEE(Skill):
+    name = <span class="s">"MoveEE"</span>
+    requires = frozenset({<span class="s">"left_arm"</span>})
+
+    <span class="cm"># guards, timeout 은 ActionInput 에서 상속</span>
+    <span class="kw">class</span> Input(ActionInput):
+        pose: Pose
+        straight: bool = True       <span class="cm"># 직선, 아니면 관절 공간 호</span>
+        keep_xy: bool = False       <span class="cm"># 수직 전용</span>
+        speed: float = param(<span class="s">"arm.speed"</span>)   <span class="cm"># params.yaml</span>
+
+    <span class="kw">class</span> Output(ActionResult):
+        error_m: float = 0.0
+
+    <span class="kw">def</span> run(self, ctx, inp):
+        arm = ctx.robot.arm
+        <span class="kw">if not</span> arm.reachable(inp.pose):
+            <span class="kw">return</span> self.Output(status=<span class="s">"fail"</span>,
+                reason=<span class="s">"unreachable"</span>, stopped_by=<span class="s">"unreachable"</span>)
+        arm.start(inp.pose, straight=inp.straight,
+                  keep_xy=inp.keep_xy, speed=inp.speed)
+        <span class="cm"># 앞 장의 루프: ctx.check + 가드 + timeout</span>
+        r = guarded_wait(ctx, inp, done=arm.done, stop=arm.stop)
+        ctx.emit(<span class="s">"move_ee_end"</span>, stopped_by=r.stopped_by)
+        <span class="kw">return</span> self.Output(**r.dict(),
+                           error_m=arm.error_to(inp.pose))</pre>
+    <div style="display:flex;flex-direction:column;gap:14px">
+<pre><span class="cm"># task_studio/skills/conditions/force_over.py</span>
+<span class="kw">class</span> ForceOver(Condition):
+    name = <span class="s">"ForceOver"</span>
+
+    <span class="kw">class</span> Input(BaseModel):
+        axis: Literal[<span class="s">"x"</span>, <span class="s">"y"</span>, <span class="s">"z"</span>] = <span class="s">"z"</span>
+        threshold_n: float = 10.0
+        relative: bool = True          <span class="cm"># 이동 중앙값 대비 변화량</span>
+        window_s: float = 0.25
+
+    <span class="kw">def</span> check(self, ctx, inp) -&gt; bool:
+        f = ctx.robot.wrist.force(inp.axis,
+                                  window=inp.window_s)
+        v = f.delta <span class="kw">if</span> inp.relative <span class="kw">else</span> f.now
+        <span class="kw">return</span> v &gt; inp.threshold_n</pre>
+      <div class="box">
+        <h3>등록과 노출</h3>
+        <ul style="font-size:14px;line-height:1.4">
+          <li><code>Skill</code> 상속 = 레지스트리 등록. import 되면 끝.</li>
+          <li>로더는 <code>MoveEE: {…}</code>를 레지스트리에서 찾아 <code>Input(**args)</code>로 검증. 틀린 필드는 로드 시점에 터진다.</li>
+          <li>툴박스·포트 타입은 <code>Input.model_json_schema()</code>에서 자동.</li>
+          <li>하드웨어는 <code>ctx.robot.*</code> 인터페이스로만. dexcontrol은 <code>vega/</code> 안에만.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 선 타입 -->
+<section class="slide">
+  <div class="eyebrow">4 · 블록 사이를 흐르는 값</div>
+  <h2>전부 pydantic 모델. base_link 기준, m / rad</h2>
+  <div class="cols c2">
+    <div class="box base">
+      <span class="tag base">① 기본 · task_studio/core/types.py</span>
+      <table style="margin-top:8px">
+        <tr><th>타입</th><th>필드</th><th>만드는 곳 → 쓰는 곳</th></tr>
+        <tr><td>원시값</td><td>float int str bool list</td><td>숫자 입력, 식</td></tr>
+        <tr><td><code>Pose</code></td><td>x y z, roll pitch yaw</td><td>GraspPose/OffsetPose → MoveEE, Navigate</td></tr>
+        <tr><td><code>JointState</code></td><td>group, q[]</td><td>MoveJoints</td></tr>
+        <tr><td><code>Wrench</code></td><td>fx fy fz tx ty tz, t</td><td>ReadWrench → ForceOver</td></tr>
+        <tr><td><code>Frame</code></td><td>rgb, depth, q_torso, q_head, t</td><td>CaptureFrame → Detect</td></tr>
+        <tr><td><code>ObjectPose</code></td><td>cls: str, pose, size(L W H), conf</td><td>Detect → GraspPose</td></tr>
+        <tr><td><code>Station</code></td><td>name, pose (지도 좌표)</td><td>→ Navigate</td></tr>
+        <tr><td><code>Result</code> / <code>ActionResult</code></td><td>status, reason / + stopped_by, pose_at_stop</td><td>모든 블록 / 모든 동작</td></tr>
+        <tr><td><code>Decision</code></td><td>choice, args</td><td>Gate →</td></tr>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="box task">
+        <span class="tag task">② 과제 · tasks/lges/types.py</span>
+        <table style="margin-top:8px">
+          <tr><td><code>PickResult</code></td><td>ActionResult + contact_z, sealed</td></tr>
+          <tr><td><code>PlaceResult</code></td><td>ActionResult + contact_z, early_contact</td></tr>
+          <tr><td><code>ItemSpec</code></td><td>item, release_above, 컵 오프셋, 기대 바코드</td></tr>
+          <tr><td><code>StackState</code></td><td>src_layers, tgt_layers</td></tr>
+          <tr><td><code>LegStation</code></td><td>Station + 학습된 leg 거리</td></tr>
+        </table>
+      </div>
+      <div class="rule">타입은 그것을 <b>출력하는 블록과 같은 층</b>에 둔다. 기본은 과제 타입을 모른다.</div>
+      <div class="rule">과제 타입은 기본 타입을 <b>상속</b>해 필드를 더한다. 자식 타입은 부모 구멍에 꽂힌다 (LegStation → Station 자리).</div>
+      <div class="rule">블록의 입출력 스키마가 곧 <b>타입 검사</b>다. Pose 구멍에 ObjectPose는 로드 시점에 거절된다.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 잇는 법 -->
+<section class="slide">
+  <div class="eyebrow">5 · 잇는 법</div>
+  <h2>선 세 종류, 노드 여덟 개</h2>
+  <div class="cols c2">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <table>
+        <tr><th>선</th><th>뜻</th><th>YAML</th></tr>
+        <tr><td><b>순서선</b></td><td>부모 노드가 자식을 어떤 순서·정책으로 돌리나</td><td>노드 아래 들여쓴 목록</td></tr>
+        <tr><td><b>값선</b></td><td>한 블록의 출력이 다른 블록의 입력으로. 블랙보드의 <code>$변수</code></td><td><code>out: $det</code> → <code>det: $det</code></td></tr>
+        <tr><td><b>가드선</b></td><td>동작이 도는 동안 조건을 계속 본다</td><td><code>guards: [ForceOver: {…}]</code></td></tr>
+      </table>
+      <div class="rule"><b>실패 처리는 블록 안이 아니라 트리 모양에 있다.</b> 블록이 fail을 돌려주면 Sequence가 멈추고, 위의 Fallback이 다음 자식(재검출, 또는 Gate)을 시도한다.</div>
+      <div class="rule">식은 산술·비교·논리만 (<code>$stack.src - 1</code>). 과제 지식이 드는 계산은 식이 아니라 블록이다. 그래야 YAML과 그래프가 1:1.</div>
+      <div class="rule">프로그램 파일 = <code>main</code> 트리 + <code>on_abort</code> 트리. 어디서 멈추든 <code>on_abort</code>가 돈다.</div>
+    </div>
+    <table>
+      <tr><th>노드</th><th>뜻</th><th>지금 코드에서는</th></tr>
+      <tr><td><code>Sequence</code></td><td>차례로, 하나 실패하면 실패</td><td>함수 본문</td></tr>
+      <tr><td><code>Fallback</code></td><td>차례로, 하나 성공하면 성공</td><td>재검출 → 안 되면 운영자</td></tr>
+      <tr><td><code>Retry(n)</code></td><td>실패하면 n번 다시</td><td>MAX_PHASE_ATTEMPTS</td></tr>
+      <tr><td><code>Parallel(policy)</code></td><td>동시에. 전부 / 하나 끝나면. <code>requires</code> 겹치면 로드 시 거절</td><td>_park_during_legs</td></tr>
+      <tr><td><code>Loop(while)</code></td><td>반복, 블랙보드 값으로 종료</td><td>while src ≥ 1</td></tr>
+      <tr><td><code>Condition</code></td><td>조건 블록 또는 식을 한 번 검사</td><td>if descent_reachable()</td></tr>
+      <tr><td><code>Gate(prompt, allowed)</code></td><td>운영자 결정까지 멈춤. autonomy 레벨로 자동 통과 가능</td><td>input("Continue?")</td></tr>
+      <tr><td><code>Set</code></td><td>블랙보드 값 바꾸기</td><td>src -= 1</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 7 프로그램 -->
+<section class="slide" style="padding-bottom:36px">
+  <div class="eyebrow">6 · 프로그램 = 트리 하나를 YAML로</div>
+  <h2>물건 하나를 보고, 집고, 놓는다</h2>
+  <div class="cols c12" style="gap:20px">
+<pre><span class="k">main</span>:
+  <span class="k">Sequence</span>:
+    - <span class="k">Parallel</span>:                 <span class="cm"># 머리·몸통 동시에 카메라 자세</span>
+        policy: all
+        children:
+          - <span class="a">MoveJoints</span>: {group: head,  q: <span class="v">$params.head_down</span>}
+          - <span class="a">MoveJoints</span>: {group: torso, q: <span class="v">$params.torso_lean</span>}
+    - <span class="t">DetectObject</span>: {cls: case, n: 3, out: <span class="v">$det</span>}
+    - <span class="a">GraspPose</span>:  {det: <span class="v">$det</span>, approach: top, point: center,
+                  out: <span class="v">$aim</span>}
+    - <span class="a">OffsetPose</span>: {pose: <span class="v">$aim</span>, dy: 0.03, dz: -0.005, out: <span class="v">$aim2</span>}
+    - <span class="t">SuctionPick</span>: {pose: <span class="v">$aim2</span>, expected_z: 0.85,
+                   guards: [<span class="c">SafetyFloor</span>: {z_min: 0.82}], out: <span class="v">$pick</span>}
+    - <span class="t">SuctionPlace</span>: {pose: <span class="v">$drop</span>, expected_z: 0.90,
+                    release_above: 0.02, out: <span class="v">$place</span>}
+    - <span class="a">MoveJoints</span>: {group: left_arm, q: <span class="v">$params.home_left</span>}
+<span class="k">on_abort</span>:                         <span class="cm"># 어디서 멈추든</span>
+  <span class="k">Sequence</span>:
+    - <span class="a">MoveEE</span>: {pose: <span class="v">$park</span>, straight: true, keep_xy: true}
+    - <span class="a">MoveJoints</span>: {group: left_arm, q: <span class="v">$params.home_left</span>}
+
+<span class="cm"># 입력: $item, $drop, $park, $params  — 호출하는 쪽이 준다</span></pre>
+    <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+      <iframe src="task_studio_graph.html#flow,embed" title="프로그램 그래프"></iframe>
+      <p class="muted small"><span class="tag ctrl">제어 노드</span> 점선 상자 · <span class="tag base">① 기본</span> <span class="tag task">② 과제</span> 카드 · 값선은 타입별 색 · <span class="tag cond">가드</span>는 카드 아래 육각형. 같은 YAML을 그린 것.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 과제가 블록을 더하는 법 -->
+<section class="slide">
+  <div class="eyebrow">7 · 과제 층이 블록을 더하는 법</div>
+  <h2>원자 블록을 더하거나, 묶어서 복합 블록을 만든다</h2>
+  <div class="cols c11">
+<pre><span class="cm"># tasks/lges/manip/suction_pick.py  — 복합 스킬도 같은 Skill 계약</span>
+<span class="kw">class</span> SuctionPick(Skill):
+    name = <span class="s">"SuctionPick"</span>
+    requires = frozenset({<span class="s">"left_arm"</span>, <span class="s">"suction"</span>})
+
+    <span class="kw">class</span> Input(ActionInput):
+        pose: Pose
+        expected_z: float
+        approach_above: float = param(<span class="s">"pick.approach_above"</span>)
+
+    <span class="kw">class</span> Output(PickResult): ...
+
+    <span class="kw">def</span> run(self, ctx, inp):
+        above = OffsetPose.call(ctx, pose=inp.pose, dz=inp.approach_above)
+        MoveEE.call(ctx, pose=above)                        <span class="cm"># 위로</span>
+        r = MoveEE.call(ctx, pose=inp.pose, straight=True, keep_xy=True,
+                        guards=[ForceOver(),                <span class="cm"># 접근: 접촉까지</span>
+                                SafetyFloor(z_min=inp.expected_z - 0.03),
+                                *inp.guards])
+        <span class="kw">if</span> r.stopped_by != <span class="s">"ForceOver"</span>:
+            <span class="kw">return</span> self.Output(status=<span class="s">"fail"</span>, reason=<span class="s">"no_contact"</span>, **r.dict())
+        SuctionOn.call(ctx)
+        w = Wait.call(ctx, timeout=1.0, guards=[Sealed()])  <span class="cm"># 씰 될 때까지</span>
+        MoveEE.call(ctx, pose=above)                        <span class="cm"># 들기</span>
+        <span class="kw">return</span> self.Output(status=<span class="s">"ok"</span>, stopped_by=r.stopped_by,
+                           contact_z=r.pose_at_stop.z,
+                           sealed=(w.stopped_by == <span class="s">"Sealed"</span>))</pre>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="box" style="padding:12px 16px">
+        <h3>어느 층에 두나</h3>
+        <p style="font-size:15px">배터리·케이스·bin·스테이션·층·바코드·테이블 높이가 이름에 나오면 <span class="tag task">② 과제</span>. 아니면 <span class="tag base">① 기본</span>. 헷갈리면 과제에 두고, 두 번째 PoC에서 다시 쓰고 싶을 때 기본으로 내린다. import 방향은 과제 → 기본 한쪽뿐.</p>
+      </div>
+      <div class="box" style="padding:12px 16px">
+        <h3>과제가 더하는 것 (LGES)</h3>
+        <table style="font-size:14px">
+          <tr><td>원자 동작</td><td><code>ReadCode</code> 바코드 리더</td></tr>
+          <tr><td>원자 조건</td><td><code>SafetyFloor</code>, <code>BEVInWindow</code></td></tr>
+          <tr><td>복합</td><td><code>DetectObject</code> <code>SuctionPick/Place</code> <code>GoToStation</code> <code>ExpectedZ</code> <code>ItemSpec</code> <code>DestStation</code> <code>SlotPose</code> <code>ParkDuringLeg</code></td></tr>
+          <tr><td>타입</td><td><code>PickResult</code> <code>PlaceResult</code> <code>ItemSpec</code> <code>StackState</code> <code>LegStation</code></td></tr>
+          <tr><td>데이터</td><td><code>params.yaml</code>(홈 자세·컵 길이·z_min) <code>objects.yaml</code> <code>stations.yaml</code> 검출 모델, 지도</td></tr>
+        </table>
+      </div>
+      <div class="rule" style="font-size:15.5px">복합 블록은 파이썬(<code>Skill.call</code>로 이어 붙임) 또는 YAML 매크로. 쓰는 쪽에서는 구분되지 않는다. 기본 층은 원자 블록까지만, 조합은 과제가 한다. 다음 PoC는 <code>tasks/&lt;이름&gt;/</code>을 새로 만든다.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 데모 -->
+<section class="slide" style="padding-bottom:36px">
+  <div class="eyebrow">8 · 데모 (가짜 로봇)</div>
+  <h2 style="display:flex;justify-content:space-between;align-items:baseline">YAML을 그리고, 실행하면 노드가 칠해지고, 이벤트가 쌓인다 <a href="task_studio_graph.html" target="_blank" style="font-size:16px;font-weight:500">새 창에서 열기 ↗</a></h2>
+  <div style="flex:1;min-height:0"><iframe src="task_studio_graph.html#flow" title="Task Studio 그래프 뷰어"></iframe></div>
+  <p class="muted small">예시를 "Task 3 아이템 하나"로 바꾸면 실제 과제 크기가 된다. "첫 검출 실패"를 켜면 DetectObject가 한 번 실패해 Fallback → Gate(운영자 버튼)로 넘어간다. 이벤트 탭이 실행기가 쓰는 JSONL 한 줄씩.</p>
+</section>
+
+</div>
+<div class="num" id="num"></div>
+<script>
+const slides = [...document.querySelectorAll('.slide')];
+let i = Math.max(0, Math.min(slides.length-1, parseInt(location.hash.slice(1)||'1',10)-1));
+function show(n) { i = (n + slides.length) % slides.length; slides.forEach((s,k) => s.classList.toggle('on', k===i)); document.getElementById('num').textContent = `${i+1} / ${slides.length}`; history.replaceState(null, '', '#'+(i+1)); }
+function fit() { const s = Math.min(innerWidth/1280, innerHeight/720) * 0.96; slides.forEach(el => el.style.transform = `scale(${s})`); }
+addEventListener('keydown', e => {
+  if (['ArrowRight','PageDown',' '].includes(e.key)) { e.preventDefault(); show(i+1); }
+  if (['ArrowLeft','PageUp'].includes(e.key)) { e.preventDefault(); show(i-1); }
+  if (e.key==='Home') show(0); if (e.key==='End') show(slides.length-1);
+});
+document.getElementById('stage').addEventListener('click', e => { if (e.target.closest('a, iframe, button, input, select')) return; show(e.clientX > innerWidth/2 ? i+1 : i-1); });
+addEventListener('resize', fit); fit(); show(i);
+</script>
+</body>
+</html>

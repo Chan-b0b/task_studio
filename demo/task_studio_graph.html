@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Studio 그래프 뷰어</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* YAML → 그래프. 세 레이아웃(트리 / 데이터플로 / 아웃라인), 같은 데이터, 같은 실행 하이라이트. */
+:root {
+  --bg: #f3f4f2; --panel: #ffffff; --fg: #1d2420; --muted: #6a736e; --line: #d8dcd9; --grid: #e6e9e6;
+  --accent: #0f6e56; --accent-fg: #fff; --code-bg: #f7f8f6;
+  --ctrl: #4d78c4; --ctrl-bg: #e6edf9; --base: #2f8f6e; --base-bg: #e3f3ec; --task: #c6731a; --task-bg: #fbeedd; --cond: #8a5cc7; --cond-bg: #efe7fa;
+  --run: #ff9a1f; --ok: #1db872; --fail: #e23b45;
+  --font: "IBM Plex Sans KR", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161a18; --panel: #1f2422; --fg: #e6e9e6; --muted: #98a19c; --line: #343b37; --grid: #222825;
+  --accent: #4fb596; --accent-fg: #0e1512; --code-bg: #181d1b;
+  --ctrl: #7fa6e8; --ctrl-bg: #233047; --base: #5ec29f; --base-bg: #1e3a30; --task: #f1a33a; --task-bg: #43301a; --cond: #c29ae6; --cond-bg: #352846; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161a18; --panel: #1f2422; --fg: #e6e9e6; --muted: #98a19c; --line: #343b37; --grid: #222825;
+  --accent: #4fb596; --accent-fg: #0e1512; --code-bg: #181d1b;
+  --ctrl: #7fa6e8; --ctrl-bg: #233047; --base: #5ec29f; --base-bg: #1e3a30; --task: #f1a33a; --task-bg: #43301a; --cond: #c29ae6; --cond-bg: #352846; color-scheme: dark }
+
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 15px; font-weight: 600; margin: 0 8px 0 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+.spacer { flex: 1; }
+button { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 500; }
+button.danger { color: var(--fail); } button:disabled { opacity: .45; cursor: default; }
+label.opt { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+main { flex: 1; min-height: 0; display: flex; }
+#canvas { flex: 1; min-width: 0; overflow: auto; background-color: var(--bg); background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 24px 24px; position: relative; }
+#canvas svg { display: block; }
+#zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 4px; }
+aside { width: 420px; max-width: 45vw; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-radius: 0; background: none; padding: 9px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 500; }
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; } .pane[hidden], #gate[hidden] { display: none; }
+textarea#yaml { flex: 1; min-height: 0; resize: none; border: 0; padding: 12px 14px; font: 12.5px/1.5 var(--mono); background: var(--code-bg); color: var(--fg); white-space: pre; overflow: auto; }
+textarea#yaml:focus { outline: none; }
+.pane-foot { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+#events { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 14px; font: 12px/1.55 var(--mono); background: var(--code-bg); }
+#events div { white-space: pre; } #events .enter { color: var(--muted); } #events .ok { color: var(--ok); } #events .fail { color: var(--fail); } #events .guard { color: var(--run); }
+#legend { padding: 10px 14px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+#legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+#gate { margin: 10px 12px 0; padding: 12px 14px; border: 1px solid var(--run); border-radius: 8px; }
+#gate .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--run); font-weight: 600; }
+#gate p { margin: 4px 0 10px; font-weight: 500; } #gate .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+#status { font-size: 12.5px; color: var(--muted); padding: 6px 14px; border-top: 1px solid var(--line); min-height: 18px; }
+#status.run { color: var(--run); } #status.ok { color: var(--ok); } #status.fail { color: var(--fail); }
+
+/* SVG */
+svg text { font-family: var(--mono); font-size: 12px; fill: var(--fg); }
+svg text.lab { font-family: var(--font); }
+svg .card { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+svg .card.base { stroke: var(--base); } svg .card.task { stroke: var(--task); }
+svg .hdr.base { fill: var(--base-bg); } svg .hdr.task { fill: var(--task-bg); }
+svg .pill { fill: var(--ctrl-bg); stroke: var(--ctrl); stroke-width: 1.2; }
+svg .pill-t { fill: var(--ctrl); font-weight: 500; }
+svg .box { fill: none; stroke: var(--ctrl); stroke-width: 1; stroke-dasharray: 4 3; opacity: .8; }
+svg .box-t { fill: var(--ctrl); font-size: 11px; font-weight: 500; }
+svg .hex { fill: var(--cond-bg); stroke: var(--cond); stroke-width: 1.1; } svg .hex-t { fill: var(--cond); font-size: 11px; }
+svg .edge { fill: none; stroke: var(--ctrl); stroke-width: 1.4; } svg .arrow { fill: var(--ctrl); }
+svg .wire { fill: none; stroke-width: 1.6; opacity: .85; }
+svg .port { stroke: var(--panel); stroke-width: 1.2; }
+svg .dim { fill: var(--muted); } svg .small { font-size: 11px; }
+svg .src { fill: var(--panel); stroke: var(--muted); stroke-dasharray: 3 2; }
+svg .rail { stroke-width: 2; fill: none; opacity: .8; }
+svg g.running > .card, svg g.running > .pill, svg g.running > .box { stroke: var(--run) !important; stroke-width: 3 !important; }
+svg g.done > .card, svg g.done > .pill, svg g.done > .box { stroke: var(--ok) !important; stroke-width: 2 !important; }
+svg g.fail > .card, svg g.fail > .pill, svg g.fail > .box { stroke: var(--fail) !important; stroke-width: 3 !important; }
+svg g.running > .rowbg { fill: var(--run); opacity: .18; } svg g.done > .rowbg { fill: var(--ok); opacity: .14; } svg g.fail > .rowbg { fill: var(--fail); opacity: .18; }
+@media (max-width: 860px) { main { flex-direction: column; } aside { width: auto; max-width: none; border-left: 0; border-top: 1px solid var(--line); height: 45vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Task Studio 그래프 뷰어</h1>
+  <div class="seg" id="views" hidden>
+    <button aria-pressed="false" data-v="tree">① BT 트리</button>
+    <button aria-pressed="true" data-v="flow">② 데이터플로</button>
+    <button aria-pressed="false" data-v="outline">③ 아웃라인</button>
+  </div>
+  <label class="opt"><input type="checkbox" id="optWires" checked> 값선</label>
+  <label class="opt">예시 <select id="selEx"><option value="simple">물건 집어서 놓기</option><option value="task3">Task 3 아이템 하나</option></select></label>
+  <span class="spacer"></span>
+  <label class="opt"><input type="checkbox" id="optFail" checked> 첫 검출 실패</label>
+  <label class="opt">속도 <input type="range" id="optSpeed" min="1" max="6" value="3" style="width:80px"></label>
+  <button id="btnRun" class="primary">▶ 실행</button>
+  <button id="btnStop" class="danger" disabled>■ 정지</button>
+</header>
+<main>
+  <div id="canvas"><div id="zoom"><button id="zOut">−</button><button id="zIn">+</button><button id="zFit">맞춤</button></div></div>
+  <aside>
+    <div id="gate" hidden><div class="eyebrow">운영자 게이트</div><p id="gatePrompt"></p><div class="btns" id="gateBtns"></div></div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-pane="paneYaml">YAML</button>
+      <button role="tab" aria-selected="false" data-pane="paneEvents">이벤트</button>
+    </div>
+    <section class="pane" id="paneYaml">
+      <textarea id="yaml" spellcheck="false" aria-label="프로그램 YAML"></textarea>
+      <div class="pane-foot"><span>원본은 YAML. 고치고 다시 그리면 됩니다.</span><span class="spacer"></span><button id="btnDraw">다시 그리기</button></div>
+    </section>
+    <section class="pane" id="paneEvents" hidden>
+      <pre id="events"></pre>
+      <div class="pane-foot">실행 1회 = JSONL 파일 1개. node_enter / node_exit 는 실행기가 자동으로 쓴다.</div>
+    </section>
+    <div id="legend"></div>
+    <div id="status">준비됨</div>
+  </aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script>
+/* ---------- 스키마 (editor/schema.py 가 pydantic 에서 뽑는 것) ---------- */
+const SCHEMA = [
+  {name:'MoveJoints', kind:'action', layer:'base', inputs:{group:'enum', q:'text', speed:'num'}, out:'Result'},
+  {name:'MoveEE', kind:'action', layer:'base', inputs:{pose:'Pose', straight:'bool', keep_xy:'bool', speed:'num'}, out:'Result'},
+  {name:'BaseMove', kind:'action', layer:'base', inputs:{dx:'num', dy:'num', dyaw:'num', speed:'num'}, out:'Result'},
+  {name:'Navigate', kind:'action', layer:'base', inputs:{x:'num', y:'num', yaw:'num', speed:'num'}, out:'Result'},
+  {name:'SuctionOn', kind:'action', layer:'base', inputs:{}, out:'Result'},
+  {name:'SuctionOff', kind:'action', layer:'base', inputs:{blow:'bool'}, out:'Result'},
+  {name:'GripperMove', kind:'action', layer:'base', inputs:{width:'num', force:'num'}, out:'Result'},
+  {name:'CaptureFrame', kind:'action', layer:'base', inputs:{camera:'enum'}, out:'Frame'},
+  {name:'Detect', kind:'action', layer:'base', inputs:{detector:'text', cls:'String'}, out:'ObjectPose'},
+  {name:'ReadWrench', kind:'action', layer:'base', inputs:{arm:'enum'}, out:'Wrench'},
+  {name:'Wait', kind:'action', layer:'base', inputs:{timeout:'num'}, out:'Result'},
+  {name:'OffsetPose', kind:'action', layer:'base', inputs:{pose:'Pose', dx:'num', dy:'num', dz:'num', dyaw:'num'}, out:'Pose'},
+  {name:'GraspPose', kind:'action', layer:'base', inputs:{det:'ObjectPose', approach:'enum', point:'enum'}, out:'Pose'},
+  {name:'DetectObject', kind:'action', layer:'task', inputs:{cls:'enum', n:'num'}, out:'ObjectPose'},
+  {name:'ResolvePose', kind:'action', layer:'task', inputs:{det:'ObjectPose', item:'Item', offset:'text'}, out:'Pose'},
+  {name:'ExpectedZ', kind:'action', layer:'task', inputs:{station:'Station', item:'Item', layers:'Number'}, out:'Number'},
+  {name:'ItemSpec', kind:'action', layer:'task', inputs:{item:'Item'}, out:'ItemSpec'},
+  {name:'SuctionPick', kind:'action', layer:'task', inputs:{pose:'Pose', expected_z:'Number'}, out:'PickResult'},
+  {name:'ReadCode', kind:'action', layer:'task', inputs:{window:'num'}, out:'String'},
+  {name:'DestStation', kind:'action', layer:'task', inputs:{item:'Item', barcode:'String'}, out:'Station'},
+  {name:'GoToStation', kind:'action', layer:'task', inputs:{station:'Station'}, out:'Result'},
+  {name:'ParkDuringLeg', kind:'action', layer:'task', inputs:{station:'Station'}, out:'Result'},
+  {name:'SlotPose', kind:'action', layer:'task', inputs:{det:'ObjectPose', item:'Item'}, out:'Pose'},
+  {name:'SuctionPlace', kind:'action', layer:'task', inputs:{pose:'Pose', expected_z:'Number', release_above:'Number'}, out:'PlaceResult'},
+  {name:'ForceOver', kind:'cond', layer:'base', inputs:{axis:'enum', threshold:'num', relative:'bool'}},
+  {name:'Sealed', kind:'cond', layer:'base', inputs:{}},
+  {name:'Timeout', kind:'cond', layer:'base', inputs:{s:'num'}},
+  {name:'Reachable', kind:'cond', layer:'base', inputs:{pose:'Pose'}},
+  {name:'SafetyFloor', kind:'cond', layer:'task', inputs:{z_min:'num'}},
+  {name:'BEVInWindow', kind:'cond', layer:'task', inputs:{cls:'enum'}},
+];
+const BY = Object.fromEntries(SCHEMA.map(s=>[s.name,s]));
+const CONTROL = new Set(['Sequence','Fallback','Retry','Parallel','Loop','Condition','Gate','Set']);
+const SYM = {Sequence:'→', Fallback:'?', Retry:'↻', Parallel:'⇉', Loop:'↺', Condition:'◇', Gate:'⏸', Set:'≔'};
+const TYPE_COLOR = {Pose:'#3b82f6', ObjectPose:'#0ea5a4', Number:'#b7791f', String:'#d946a8', Station:'#f97316', Item:'#16a34a', ItemSpec:'#8b5cf6', Result:'#9ca3af', PickResult:'#9ca3af', PlaceResult:'#9ca3af', Frame:'#64748b', Wrench:'#64748b'};
+
+/* ---------- YAML → 트리 ---------- */
+let idc = 0;
+function parseLeaf(obj) {
+  const [type, args] = Object.entries(obj)[0]; const s = BY[type]; if (!s) throw new Error('모르는 블록: '+type);
+  const n = {type, kind:s.kind, layer:s.layer, id:'n'+(idc++), inputs:{}};
+  for (const [k, t] of Object.entries(s.inputs)) if (args && args[k]!==undefined) {
+    const raw = args[k];
+    n.inputs[k] = (typeof raw==='string' && raw.startsWith('$') && t!=='text') ? {var: raw.slice(1), type: ['enum','num','bool'].includes(t)?'Number':t} : {lit: raw, type:t};
+  }
+  if (s.kind==='action') { n.guards = (args?.guards||[]).map(parseLeaf); n.out = args?.out ? String(args.out).replace(/^\$/,'') : ''; n.outType = s.out; }
+  return n;
+}
+function parseList(list) {
+  return (list||[]).map(item => {
+    const [type, args] = Object.entries(item)[0];
+    if (!CONTROL.has(type)) return parseLeaf(item);
+    const n = {type, kind:'control', id:'n'+(idc++), children:[]};
+    if (type==='Sequence'||type==='Fallback') n.children = parseList(args);
+    if (type==='Retry') { n.n = args.n ?? 3; n.children = parseList(args.body); }
+    if (type==='Parallel') { n.policy = args.policy ?? 'all'; n.children = parseList(args.children); }
+    if (type==='Loop') { n.while = args.while ?? ''; n.children = parseList(args.body); }
+    if (type==='Condition') { n.expr = args.expr ?? ''; n.check = (args.check||[]).map(parseLeaf); }
+    if (type==='Gate') { n.prompt = args.prompt ?? ''; n.allowed = args.allowed ?? []; }
+    if (type==='Set') { const [t,e] = Object.entries(args)[0]; n.target = t; n.expr = String(e); }
+    return n;
+  });
+}
+function yamlToProgram(text) {
+  idc = 0; const doc = jsyaml.load(text) || {}; const prog = {};
+  for (const key of ['main','on_abort']) if (doc[key]) { const [t,a] = Object.entries(doc[key])[0]; prog[key] = parseList([{[t]:a}])[0]; }
+  return prog;
+}
+function leaves(n, acc=[]) { if (n.kind!=='control') acc.push(n); (n.children||[]).forEach(c=>leaves(c,acc)); (n.check||[]).forEach(c=>leaves(c,acc)); return acc; }
+function walk(n, f) { f(n); (n.children||[]).forEach(c=>walk(c,f)); (n.check||[]).forEach(c=>walk(c,f)); (n.guards||[]).forEach(c=>walk(c,f)); }
+
+/* ---------- SVG 도우미 ---------- */
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs={}, parent) { const e = document.createElementNS(NS, tag); for (const [k,v] of Object.entries(attrs)) if (v!==undefined && v!==null) e.setAttribute(k, v); if (parent) parent.appendChild(e); return e; }
+function txt(parent, x, y, s, cls, anchor) { const t = el('text', {x, y, class:cls, 'text-anchor':anchor}, parent); t.textContent = s; return t; }
+function tw(s) { let w=0; for (const ch of String(s)) w += ch.charCodeAt(0) > 0x2e7f ? 12 : 7.3; return w; }
+function litStr(v) { return typeof v==='boolean' ? (v?'true':'false') : String(v); }
+// 프로그램 입력(어느 블록도 만들지 않는 변수)은 선 대신 예시 값을 옆에 적는다
+const SAMPLE = {item:'case', drop:'0.55, -0.25, 0.92', park:'0.30, 0.20, 1.10', 'params.home_left':'[0, -0.4, 0, 1.2, 0, 0.6, 0]', 'params.head_down':'[0, 0.6]', 'params.torso_lean':'[0.3, 0, 0]', 'stack.src':'3', 'stack.tgt':'0', stack:'{src: 3, tgt: 0}'};
+let FREE = new Set();
+const isFree = v => v.var!==undefined && FREE.has(v.var.split('.')[0]);
+const isWired = v => v.var!==undefined && !FREE.has(v.var.split('.')[0]);
+function inputLabel(k, v) {
+  if (v.var===undefined) return `${k} = ${litStr(v.lit)}`;
+  if (isFree(v)) { const ex = SAMPLE[v.var] ?? SAMPLE[v.var.split('.')[0]]; return `${k} ← $${v.var}${ex!==undefined ? '  ('+ex+')' : ''}`; }
+  return `${k} ← $${v.var}`;
+}
+function ctrlLabel(n) {
+  switch (n.type) { case 'Retry': return `Retry ×${n.n}`; case 'Parallel': return `Parallel ${n.policy}`; case 'Loop': return `Loop while ${n.while}`;
+    case 'Condition': return n.expr ? `Condition ${n.expr}` : `Condition ${n.check.map(c=>c.type).join(', ')}`;
+    case 'Gate': return `Gate "${n.prompt}" [${n.allowed.join(' / ')}]`; case 'Set': return `Set ${n.target} = ${n.expr}`; default: return n.type; }
+}
+function hexPath(x, y, w, h) { const c = h/2; return `M${x+c},${y} H${x+w-c} L${x+w},${y+h/2} L${x+w-c},${y+h} H${x+c} L${x},${y+h/2} Z`; }
+
+/* ---------- 카드 (동작/조건 블록) ---------- */
+const ROW = 17, HDR = 24, PAD = 10;
+function measureCard(n) {
+  const ins = Object.entries(n.inputs);
+  let w = tw(n.type) + 30;
+  for (const [k,v] of ins) w = Math.max(w, tw(inputLabel(k,v)) + 2*PAD + 8);
+  if (n.out) w = Math.max(w, tw(`→ $${n.out} : ${n.outType}`) + 2*PAD + 8);
+  let h = HDR + ins.length*ROW + (n.out? ROW : 0) + 8;
+  const gw = (n.guards||[]).reduce((a,g)=>a + tw(g.type) + 26 + 6, 0);
+  if (n.guards && n.guards.length) { h += 24; w = Math.max(w, gw + 2*PAD + tw('가드')+6); }
+  return {w: Math.ceil(w), h};
+}
+function drawCard(root, n, x, y, ports) {
+  const {w,h} = measureCard(n);
+  const g = el('g', {'data-id':n.id, transform:`translate(${x},${y})`}, root);
+  el('rect', {class:`card ${n.layer}`, width:w, height:h, rx:7}, g);
+  el('path', {class:`hdr ${n.layer}`, d:`M0,7 a7,7 0 0 1 7,-7 H${w-7} a7,7 0 0 1 7,7 V${HDR} H0 Z`}, g);
+  txt(g, PAD, 16, n.type, 'name').style.fontWeight = '600';
+  txt(g, w-PAD, 16, n.layer==='base' ? '①' : '②', 'dim small', 'end');
+  let yy = HDR + 13;
+  for (const [k,v] of Object.entries(n.inputs)) {
+    txt(g, PAD+6, yy, inputLabel(k,v), isWired(v) ? '' : 'dim');
+    if (isWired(v)) { el('circle', {class:'port', cx:0, cy:yy-4, r:4, fill: TYPE_COLOR[v.type]||'#888'}, g); ports.in.push({id:n.id, var:v.var.split('.')[0], x:x, y:y+yy-4, type:v.type}); }
+    yy += ROW;
+  }
+  if (n.out) { txt(g, w-PAD-6, yy, `→ $${n.out} : ${n.outType}`, '', 'end'); el('circle', {class:'port', cx:w, cy:yy-4, r:4, fill: TYPE_COLOR[n.outType]||'#888'}, g); ports.out[n.out] = {x:x+w, y:y+yy-4, type:n.outType}; yy += ROW; }
+  if (n.guards && n.guards.length) {
+    let gx = PAD; txt(g, gx, yy+9, '가드', 'dim small'); gx += tw('가드')+6;
+    for (const gd of n.guards) { const gw = tw(gd.type)+26; const hg = el('g', {'data-id':gd.id}, g); el('path', {class:'hex', d:hexPath(gx, yy-4, gw, 18)}, hg); txt(hg, gx+gw/2, yy+9, gd.type, 'hex-t', 'middle'); gx += gw+6; }
+  }
+  return {w,h};
+}
+function drawPill(root, n, x, y, w) {
+  const lab = ctrlLabel(n); w = w || tw(lab)+tw(SYM[n.type])+34;
+  const g = el('g', {'data-id':n.id, transform:`translate(${x},${y})`}, root);
+  el('rect', {class:'pill', width:w, height:28, rx:14}, g);
+  txt(g, 12, 19, SYM[n.type], 'pill-t'); txt(g, 30, 18, lab, 'pill-t lab').style.fontSize = '12.5px';
+  return {w, h:28};
+}
+function drawWires(root, ports, inputsBadge) {
+  if (!document.getElementById('optWires').checked) return;
+  const layer = el('g', {class:'wires'}, root); root.insertBefore(layer, root.firstChild);
+  for (const p of ports.in) {
+    let src = ports.out[p.var];
+    if (!src && inputsBadge) src = inputsBadge(p.var);
+    if (!src) continue;
+    const dx = Math.max(40, Math.abs(p.x - src.x)/2);
+    el('path', {class:'wire', stroke: TYPE_COLOR[p.type]||'#888', d:`M${src.x},${src.y} C${src.x+dx},${src.y} ${p.x-dx},${p.y} ${p.x},${p.y}`}, layer);
+  }
+}
+// 프로그램 입력 ($item, $stack, …) 은 왼쪽 위 점선 카드로
+function drawInputs(root, vars, x, y) {
+  if (!vars.length) return () => null;
+  const w = Math.max(...vars.map(v=>tw('$'+v)))+2*PAD+10, h = 22 + vars.length*ROW;
+  const g = el('g', {transform:`translate(${x},${y})`}, root);
+  el('rect', {class:'src', width:w, height:h, rx:6}, g); txt(g, PAD, 15, '프로그램 입력', 'dim small lab');
+  const pos = {}; vars.forEach((v,i) => { const yy = 22+i*ROW+10; txt(g, PAD, yy, '$'+v); el('circle', {class:'port', cx:w, cy:yy-4, r:4, fill:'#888'}, g); pos[v] = {x:x+w, y:y+yy-4}; });
+  return v => pos[v];
+}
+function freeVars(prog) {
+  const produced = new Set(), used = [];
+  for (const root of Object.values(prog)) for (const l of leaves(root)) { if (l.out) produced.add(l.out); for (const v of Object.values(l.inputs)) if (v.var!==undefined) used.push(v.var.split('.')[0]); }
+  return [...new Set(used.filter(v=>!produced.has(v)))];
+}
+
+/* ---------- ① BT 트리 (위 → 아래) ---------- */
+function layoutTree(n) {
+  if (n.kind!=='control') { const m = measureCard(n); n._w = m.w; n._h = m.h; n._sw = m.w; return; }
+  const lab = ctrlLabel(n); n._w = tw(lab)+tw(SYM[n.type])+34; n._h = 28;
+  const kids = n.children.concat(n.check||[]);
+  kids.forEach(layoutTree);
+  const sw = kids.reduce((a,c)=>a + c._sw, 0) + Math.max(0, kids.length-1)*28;
+  n._sw = Math.max(n._w, sw);
+}
+function placeTree(n, x, depth, rows) {
+  n._x = x + (n._sw - n._w)/2; n._d = depth; rows[depth] = Math.max(rows[depth]||0, n._h);
+  const kids = n.children ? n.children.concat(n.check||[]) : [];
+  const kw = kids.reduce((a,c)=>a + c._sw, 0) + Math.max(0, kids.length-1)*28;
+  let cx = x + (n._sw - kw)/2;
+  for (const c of kids) { placeTree(c, cx, depth+1, rows); cx += c._sw + 28; }
+}
+function renderTree(prog, svg) {
+  const ports = {in:[], out:{}}; const root = el('g', {}, svg); let totalW = 0, totalH = 0;
+  const inputsAt = () => null;
+  let ox = 16;
+  for (const key of ['main','on_abort']) {
+    const t = prog[key]; if (!t) continue;
+    layoutTree(t); const rows = []; placeTree(t, ox, 0, rows);
+    const ys = []; let y = 44; rows.forEach((h,i) => { ys[i] = y; y += h + 56; });
+    txt(root, ox, 32, key==='main' ? 'main' : 'on_abort  (중단되면)', 'dim lab').style.fontSize = '13px';
+    const edges = el('g', {}, root);
+    walk(t, n => (n.guards||[]).forEach(g => g._isGuard = true));   // 가드는 카드 안에 그린다
+    walk(t, n => {
+      const yy = ys[n._d];
+      if (n.kind==='control') { drawPill(root, n, n._x, yy, n._w);
+        for (const c of n.children.concat(n.check||[])) { const cy = ys[c._d]; el('path', {class:'edge', d:`M${n._x+n._w/2},${yy+28} V${(yy+28+cy)/2} H${c._x+c._w/2} V${cy}`}, edges); }
+      } else if (!n._isGuard) drawCard(root, n, n._x, yy, ports);
+    });
+    ox += t._sw + 80; totalW = Math.max(totalW, ox); totalH = Math.max(totalH, y);
+  }
+  drawWires(root, ports, inputsAt);
+  return {w: totalW+16, h: totalH+16};
+}
+
+/* ---------- ② 데이터플로 (왼 → 오른, 컨테이너) ---------- */
+const CPAD = 14, CHDR = 20, HGAP = 44, VGAP = 14, MAXW = 1400, ROWGAP = 34;
+function layoutFlow(n) {
+  if (n.kind!=='control') { const m = measureCard(n); n._w = m.w; n._h = m.h; return; }
+  const kids = n.children.concat(n.check||[]);
+  if (!kids.length) { n._w = tw(ctrlLabel(n))+40; n._h = 28; return; }
+  kids.forEach(layoutFlow);
+  if (n.type==='Sequence') {
+    // 가로로 늘어놓되 MAXW 를 넘으면 다음 줄로 감는다
+    const rows = [[]]; let w = 0;
+    for (const c of kids) { if (rows.at(-1).length && w + c._w + HGAP > MAXW) { rows.push([]); w = 0; } rows.at(-1).push(c); w += c._w + HGAP; }
+    n._rows = rows;
+    n._w = Math.max(...rows.map(r => r.reduce((a,c)=>a+c._w,0) + (r.length-1)*HGAP)) + 2*CPAD;
+    n._h = rows.reduce((a,r)=>a + Math.max(...r.map(c=>c._h)), 0) + (rows.length-1)*ROWGAP + CHDR + 2*CPAD;
+  } else { // Fallback / Retry / Loop / Parallel / Condition: 세로로 쌓음
+    n._w = Math.max(...kids.map(c=>c._w), tw(ctrlLabel(n))+30) + 2*CPAD; n._h = kids.reduce((a,c)=>a+c._h,0) + (kids.length-1)*VGAP + CHDR + 2*CPAD;
+  }
+}
+function drawFlow(root, n, x, y, ports) {
+  if (n.kind!=='control') { drawCard(root, n, x, y, ports); return; }
+  const kids = n.children.concat(n.check||[]);
+  if (!kids.length) { drawPill(root, n, x, y); return; }
+  const g = el('g', {'data-id':n.id}, root);
+  el('rect', {class:'box', x, y, width:n._w, height:n._h, rx:9}, g);
+  txt(g, x+10, y+14, `${SYM[n.type]} ${ctrlLabel(n)}`, 'box-t lab');
+  if (n.type==='Sequence') {
+    let cy = y+CHDR+CPAD;
+    n._rows.forEach((row, ri) => {
+      const rh = Math.max(...row.map(c=>c._h)); let cx = x+CPAD;
+      row.forEach((c,i) => { drawFlow(root, c, cx, cy + (rh-c._h)/2, ports);
+        const yA = cy + rh/2;
+        if (i<row.length-1) { el('path', {class:'edge', d:`M${cx+c._w+4},${yA} H${cx+c._w+HGAP-8}`}, root); el('path', {class:'arrow', d:`M${cx+c._w+HGAP-8},${yA-4} l6,4 l-6,4 z`}, root); }
+        else if (ri < n._rows.length-1) { // 다음 줄로 꺾이는 화살표
+          const ny = cy + rh + ROWGAP/2, first = n._rows[ri+1][0], ty = cy + rh + ROWGAP + Math.max(...n._rows[ri+1].map(k=>k._h))/2;
+          el('path', {class:'edge', d:`M${cx+c._w+4},${yA} H${cx+c._w+18} V${ny} H${x+CPAD-12} V${ty} H${x+CPAD-8}`}, root); el('path', {class:'arrow', d:`M${x+CPAD-8},${ty-4} l6,4 l-6,4 z`}, root); }
+        cx += c._w + HGAP; });
+      cy += rh + ROWGAP;
+    });
+  } else {
+    let cy = y+CHDR+CPAD;
+    kids.forEach((c,i) => { drawFlow(root, c, x+CPAD, cy, ports);
+      if (n.type==='Fallback' && i<kids.length-1) txt(root, x+CPAD+c._w/2, cy+c._h+VGAP-3, '실패하면 ↓', 'dim small lab', 'middle');
+      cy += c._h + VGAP; });
+  }
+}
+function renderFlow(prog, svg) {
+  const ports = {in:[], out:{}}; const root = el('g', {}, svg);
+  const inputsAt = () => null;
+  let y = 44, maxW = 0;
+  for (const key of ['main','on_abort']) { const t = prog[key]; if (!t) continue; layoutFlow(t);
+    txt(root, 16, y-10, key==='main' ? 'main' : 'on_abort  (중단되면)', 'dim lab').style.fontSize = '13px';
+    drawFlow(root, t, 16, y, ports); maxW = Math.max(maxW, t._w+32); y += t._h + 60; }
+  drawWires(root, ports, inputsAt);
+  return {w: maxW, h: y};
+}
+
+/* ---------- ③ 아웃라인 (세로 목록 + 값 레일) ---------- */
+function renderOutline(prog, svg) {
+  const root = el('g', {}, svg); const RH = 26, IND = 22, X0 = 16; let y = 16; const rows = []; // {node, depth, y}
+  function visit(n, depth) { rows.push({n, depth, y}); y += RH; (n.children||[]).forEach(c=>visit(c, depth+1)); (n.check||[]).forEach(c=>visit(c, depth+1)); }
+  for (const key of ['main','on_abort']) { const t = prog[key]; if (!t) continue; rows.push({label: key==='main' ? 'main' : 'on_abort  (중단되면)', y}); y += RH; visit(t, 0); y += 10; }
+  // 텍스트 폭 → 레일 시작 x
+  let textEnd = 0; const rowText = r => {
+    if (r.label) return r.label; const n = r.n; if (n.kind==='control') return `${SYM[n.type]} ${ctrlLabel(n)}`;
+    const ins = Object.entries(n.inputs).map(([k,v])=>inputLabel(k,v)).join('   '); return `${n.type}  ${ins}${n.guards&&n.guards.length? '   가드['+n.guards.map(g=>g.type).join(', ')+']':''}${n.out? '   → $'+n.out:''}`; };
+  rows.forEach(r => textEnd = Math.max(textEnd, X0 + (r.depth||0)*IND + tw(rowText(r)) + 20));
+  const railX0 = textEnd + 30, LANE = 18;
+  // 변수 레인
+  const vars = []; const prodRow = {}, useRows = {};
+  rows.forEach(r => { if (!r.n || r.n.kind==='control') return; const n = r.n; if (n.out) { prodRow[n.out] = r.y; if (!vars.includes(n.out)) vars.push(n.out); }
+    for (const v of Object.values(n.inputs)) if (isWired(v)) { const b = v.var.split('.')[0]; (useRows[b] ||= []).push({y:r.y, type:v.type}); if (!vars.includes(b)) vars.push(b); } });
+  const laneX = {}; vars.forEach((v,i) => laneX[v] = railX0 + i*LANE);
+  // 가지 선 (제어 노드 → 자식 범위)
+  const branch = el('g', {}, root);
+  rows.forEach((r,i) => { if (!r.n || r.n.kind!=='control') return; const kids = r.n.children.concat(r.n.check||[]); if (!kids.length) return;
+    const last = rows.filter(q => q.n && kids.includes(q.n)).at(-1); const bx = X0 + r.depth*IND + 8;
+    el('path', {class:'edge', d:`M${bx},${r.y+RH-4} V${last.y+RH/2}`}, branch);
+    rows.filter(q => q.n && kids.includes(q.n)).forEach(q => el('path', {class:'edge', d:`M${bx},${q.y+RH/2} h${IND-10}`}, branch)); });
+  // 행
+  for (const r of rows) {
+    if (r.label) { txt(root, X0, r.y+17, r.label, 'dim lab').style.fontSize = '13px'; continue; }
+    const n = r.n, x = X0 + r.depth*IND; const g = el('g', {'data-id':n.id}, root);
+    el('rect', {class:'rowbg', x:x-4, y:r.y+2, width: railX0-x-10, height:RH-4, rx:4, fill:'transparent'}, g);
+    if (n.kind==='control') { txt(g, x, r.y+17, SYM[n.type], 'pill-t'); txt(g, x+18, r.y+17, ctrlLabel(n), 'pill-t lab'); continue; }
+    let cx = x; const name = txt(g, cx, r.y+17, n.type, ''); name.style.fontWeight = '600'; name.style.fill = n.layer==='base' ? 'var(--base)' : 'var(--task)'; cx += tw(n.type) + 12;
+    for (const [k,v] of Object.entries(n.inputs)) { const s = inputLabel(k,v); if (isWired(v)) el('circle', {cx:cx-6, cy:r.y+13, r:3.5, fill:TYPE_COLOR[v.type]||'#888'}, g); txt(g, cx, r.y+17, s, isWired(v)?'':'dim'); cx += tw(s) + 14; }
+    for (const gd of n.guards||[]) { const w = tw(gd.type)+22; const hg = el('g', {'data-id':gd.id}, g); el('path', {class:'hex', d:hexPath(cx, r.y+4, w, 18)}, hg); txt(hg, cx+w/2, r.y+17, gd.type, 'hex-t', 'middle'); cx += w+8; }
+    if (n.out) { txt(g, cx, r.y+17, `→ $${n.out}`, ''); cx += tw('→ $'+n.out)+8; }
+    // 행 끝 → 레일 연결 (옅은 선)
+    if (document.getElementById('optWires').checked) {
+      if (n.out) el('path', {class:'wire', stroke:TYPE_COLOR[n.outType]||'#888', 'stroke-dasharray':'2 3', d:`M${cx},${r.y+13} H${laneX[n.out]}`}, branch);
+      for (const v of Object.values(n.inputs)) if (isWired(v)) { const b = v.var.split('.')[0]; el('path', {class:'wire', stroke:TYPE_COLOR[v.type]||'#888', 'stroke-dasharray':'2 3', opacity:.45, d:`M${cx},${r.y+13} H${laneX[b]}`}, branch); }
+    }
+  }
+  // 레일
+  if (document.getElementById('optWires').checked) for (const v of vars) {
+    const x = laneX[v]; const uses = useRows[v]||[]; const type = uses[0]?.type || 'Result'; const col = TYPE_COLOR[type]||'#888';
+    const y0 = prodRow[v] ?? 16, y1 = Math.max(prodRow[v]||0, ...uses.map(u=>u.y));
+    el('path', {class:'rail', stroke:col, d:`M${x},${y0+13} V${y1+13}`}, root);
+    if (prodRow[v]!==undefined) el('circle', {cx:x, cy:prodRow[v]+13, r:5, fill:col}, root); else el('rect', {x:x-5, y:y0+8, width:10, height:10, fill:'none', stroke:col}, root);
+    for (const u of uses) el('circle', {cx:x, cy:u.y+13, r:4, fill:'var(--panel)', stroke:col, 'stroke-width':2}, root);
+    const lab = txt(root, x, y+6, '$'+v, 'small'); lab.setAttribute('transform', `rotate(-60 ${x} ${y+6})`); lab.style.fill = col;
+  }
+  return {w: railX0 + vars.length*LANE + 60, h: y + 70};
+}
+
+/* ---------- 그리기 공통 / 줌 ---------- */
+const canvas = document.getElementById('canvas');
+let prog = null, view = 'flow', scale = 1, svgEl = null, size = {w:800, h:600};
+function draw() {
+  if (svgEl) svgEl.remove();
+  svgEl = el('svg', {}, null); canvas.insertBefore(svgEl, canvas.firstChild);
+  FREE = new Set(freeVars(prog));
+  size = ({tree:renderTree, flow:renderFlow, outline:renderOutline})[view](prog, svgEl);
+  applyZoom();
+}
+function applyZoom() { svgEl.setAttribute('width', size.w*scale); svgEl.setAttribute('height', size.h*scale); svgEl.setAttribute('viewBox', `0 0 ${size.w} ${size.h}`); }
+function fit() { scale = Math.max(0.6, Math.min(1.3, (canvas.clientWidth-20)/size.w, (canvas.clientHeight-20)/size.h)); applyZoom(); }
+document.getElementById('zIn').onclick = () => { scale *= 1.2; applyZoom(); };
+document.getElementById('zOut').onclick = () => { scale /= 1.2; applyZoom(); };
+document.getElementById('zFit').onclick = fit;
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#views button').forEach(x=>x.setAttribute('aria-pressed', String(x===b))); draw(); fit(); });
+document.getElementById('optWires').onchange = () => draw();
+document.getElementById('legend').innerHTML = Object.entries(TYPE_COLOR).filter(([k])=>!['PickResult','PlaceResult','Frame','Wrench'].includes(k)).map(([k,c])=>`<span><i style="background:${c}"></i>${k}</span>`).join('') + `<span style="flex-basis:100%"></span><span><i style="background:var(--ctrl)"></i>순서선 (제어)</span><span><i style="background:var(--cond);height:10px;width:10px;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)"></i>가드 (조건)</span><span>① 기본 · ② 과제</span>`;
+
+/* ---------- 예시 ---------- */
+const SIMPLE = `# 물건 하나를 보고, 집고, 놓고, 홈으로.   입력: $item, $drop(놓을 자리 Pose)
+main:
+  Sequence:
+    - Parallel:                                   # 머리와 몸통을 동시에 카메라 자세로
+        policy: all
+        children:
+          - MoveJoints: {group: head, q: $params.head_down}
+          - MoveJoints: {group: torso, q: $params.torso_lean}
+    - DetectObject: {cls: case, n: 3, out: $det}
+    - GraspPose: {det: $det, approach: top, point: center, out: $aim}
+    - OffsetPose: {pose: $aim, dy: 0.03, dz: -0.005, out: $aim2}
+    - SuctionPick: {pose: $aim2, expected_z: 0.85, guards: [SafetyFloor: {z_min: 0.82}], out: $pick}
+    - SuctionPlace: {pose: $drop, expected_z: 0.90, release_above: 0.02, out: $place}
+    - MoveJoints: {group: left_arm, q: $params.home_left}
+on_abort:
+  Sequence:
+    - MoveEE: {pose: $park, straight: true, keep_xy: true}
+    - MoveJoints: {group: left_arm, q: $params.home_left}
+`;
+const EXAMPLE = `main:
+  Sequence:
+    - ItemSpec: {item: $item, out: $spec}
+    - GoToStation: {station: source}
+    - Fallback:
+        - Sequence:
+            - BaseMove: {dy: 0.3, speed: 0.05, guards: [BEVInWindow: {cls: case}]}
+            - DetectObject: {cls: case, n: 5, out: $det}
+        - Gate: {prompt: "소스 케이스를 못 찾음", allowed: [move, continue, abort]}
+    - ResolvePose: {det: $det, item: $item, out: $aim}
+    - Condition: {check: [Reachable: {pose: $aim}]}
+    - ExpectedZ: {station: source, item: $item, layers: $stack.src, out: $ez}
+    - SuctionPick: {pose: $aim, expected_z: $ez, guards: [SafetyFloor: {z_min: 0.82}], out: $pick}
+    - ReadCode: {window: 2.0, out: $code}
+    - DestStation: {item: $item, barcode: $code, out: $dest}
+    - ParkDuringLeg: {station: $dest}
+    - Fallback:
+        - DetectObject: {cls: case, n: 5, out: $tdet}
+        - Gate: {prompt: "타깃 케이스를 못 찾음", allowed: [move, abort]}
+    - SlotPose: {det: $tdet, item: $item, out: $slot}
+    - ExpectedZ: {station: target, item: $item, layers: $stack.tgt, out: $ez_t}
+    - SuctionPlace: {pose: $slot, expected_z: $ez_t, release_above: $spec.release_above, out: $place}
+    - Fallback:
+        - Condition: {expr: "$place.status == 'ok'"}
+        - Gate: {prompt: "놓기 실패, 부품을 들고 있음", allowed: [release, hold, abort]}
+    - ParkDuringLeg: {station: source}
+on_abort:
+  Sequence:
+    - MoveEE: {pose: $park, straight: true, keep_xy: true}
+    - MoveJoints: {group: left_arm, q: $params.home_left}
+`;
+const yamlBox = document.getElementById('yaml'); yamlBox.value = SIMPLE;
+document.getElementById('selEx').onchange = e => { yamlBox.value = e.target.value==='simple' ? SIMPLE : EXAMPLE; redraw(); };
+function redraw() { try { prog = yamlToProgram(yamlBox.value); draw(); fit(); setStatus('그렸습니다.'); } catch (e) { setStatus('YAML 오류: '+e.message, 'fail'); } }
+document.getElementById('btnDraw').onclick = redraw;
+
+/* ---------- 가짜 로봇 실행기 ---------- */
+class Aborted extends Error {}
+const ui = {events:document.getElementById('events'), status:document.getElementById('status'), gate:document.getElementById('gate'), gatePrompt:document.getElementById('gatePrompt'), gateBtns:document.getElementById('gateBtns')};
+const state = {running:false, abort:false, failOnce:false, speed:3, bb:{}, t0:0};
+function setStatus(t, c) { ui.status.textContent = t; ui.status.className = c||''; }
+function emit(ev, data) { const rec = {t:+((performance.now()-state.t0)/1000).toFixed(2), ev, ...data}; const d = document.createElement('div');
+  d.className = ev==='node_enter' ? 'enter' : ev==='guard' ? 'guard' : (data.status==='ok' ? 'ok' : (data.status ? 'fail' : '')); d.textContent = JSON.stringify(rec); ui.events.appendChild(d); ui.events.scrollTop = ui.events.scrollHeight; }
+function mark(id, cls) { document.querySelectorAll(`[data-id="${id}"]`).forEach(g => { g.classList.remove('running','done','fail'); if (cls) g.classList.add(cls); }); }
+function clearMarks() { document.querySelectorAll('[data-id]').forEach(g => g.classList.remove('running','done','fail')); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function tick(total, onP) { let e=0; while (e<total) { if (state.abort) throw new Aborted(); await sleep(60); e+=60; if (onP && onP(e/total)) return 'guard'; } return 'done'; }
+const dur = b => b*1000/(state.speed/3);
+function getPath(p) { return p.split('.').reduce((o,k)=>o==null?undefined:o[k], state.bb); }
+function setPath(p, v) { const ks = p.split('.'); let o = state.bb; for (const k of ks.slice(0,-1)) { o[k] = o[k] ?? {}; o = o[k]; } o[ks.at(-1)] = v; }
+function evalExpr(x) { const js = x.replace(/\$([\w.]+)/g, (_,p)=>JSON.stringify(getPath(p) ?? null)); try { return Function('"use strict"; return ('+js+')')(); } catch { return false; } }
+const resolve = v => v ? (v.var!==undefined ? getPath(v.var) : v.lit) : undefined;
+const MOCK = {
+  DetectObject: n => { if (state.failOnce) { state.failOnce=false; return {status:'fail', reason:'no_object_in_view'}; } return {cls:resolve(n.inputs.cls), x:0.61, y:0.18, yaw:0.02, conf:0.93}; },
+  ResolvePose: () => ({x:0.61, y:0.18, z:0.93, roll:0, pitch:3.14, yaw:0.02}),
+  GraspPose: n => { const d = resolve(n.inputs.det)||{}; return {x:d.x, y:d.y, z:0.93, roll:0, pitch:3.14, yaw:d.yaw}; },
+  OffsetPose: n => { const p = {...(resolve(n.inputs.pose)||{})}; p.x = +((p.x||0)+(resolve(n.inputs.dx)||0)).toFixed(3); p.y = +((p.y||0)+(resolve(n.inputs.dy)||0)).toFixed(3); p.z = +((p.z||0)+(resolve(n.inputs.dz)||0)).toFixed(3); return p; }, SlotPose: () => ({x:0.58, y:-0.21, z:0.95, roll:0, pitch:3.14, yaw:0}),
+  ExpectedZ: () => 0.842, ItemSpec: n => { const it = resolve(n.inputs.item); return {item:it, release_above: it==='case'?0.027:0}; },
+  SuctionPick: () => ({status:'ok', stopped_by:'ForceOver', contact_z:0.838, sealed:true}), SuctionPlace: () => ({status:'ok', stopped_by:'ForceOver', contact_z:0.869, early_contact:false}),
+  ReadCode: () => 'BAT-2219-07', DestStation: n => (resolve(n.inputs.barcode)||'').startsWith('BAT') ? 'target' : 'left',
+};
+const BASE_DUR = {GoToStation:2.0, ParkDuringLeg:1.8, BaseMove:1.6, SuctionPick:1.8, SuctionPlace:1.8, DetectObject:0.9, MoveEE:1.2, MoveJoints:1.2, ReadCode:0.7};
+const GUARD_FIRE = {BEVInWindow:0.6, ForceOver:0.7, Sealed:0.5};
+async function runAction(n) {
+  mark(n.id, 'running'); emit('node_enter', {node:n.type});
+  let stoppedBy = 'reached';
+  const r = await tick(dur(BASE_DUR[n.type] ?? 0.5), p => { for (const g of n.guards||[]) { const f = GUARD_FIRE[g.type]; if (f!=null && p>=f) { stoppedBy = g.type; mark(g.id, 'running'); return true; } } return false; });
+  if (r==='guard') emit('guard', {node:n.type, fired:stoppedBy});
+  const v = MOCK[n.type] ? MOCK[n.type](n) : {status:'ok', stopped_by:stoppedBy};
+  const result = (v && typeof v==='object' && 'status' in v) ? {...v, stopped_by: v.stopped_by ?? stoppedBy} : {status:'ok', stopped_by:stoppedBy, value:v};
+  if (n.out) setPath(n.out, result.value !== undefined ? result.value : result);
+  mark(n.id, result.status==='ok' ? 'done' : 'fail');
+  emit('node_exit', {node:n.type, status:result.status, stopped_by:result.stopped_by, ...(result.reason?{reason:result.reason}:{})});
+  return result.status==='ok';
+}
+function askGate(n) { return new Promise(res => { ui.gatePrompt.textContent = n.prompt; ui.gateBtns.innerHTML = '';
+  for (const a of n.allowed) { const b = document.createElement('button'); b.textContent = a; if (a==='continue') b.className='primary'; if (a==='abort') b.className='danger'; b.onclick = () => { ui.gate.hidden = true; res(a); }; ui.gateBtns.appendChild(b); }
+  ui.gate.hidden = false; setStatus('운영자 결정 대기: '+n.prompt, 'run'); }); }
+async function runNode(n) {
+  if (state.abort) throw new Aborted();
+  if (n.kind!=='control') return runAction(n);
+  mark(n.id, 'running'); emit('node_enter', {node:n.type}); let ok = true;
+  try { switch (n.type) {
+    case 'Sequence': for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } break;
+    case 'Fallback': ok=false; for (const c of n.children) { if (await runNode(c)) { ok=true; break; } } break;
+    case 'Retry': ok=false; for (let i=0;i<n.n&&!ok;i++) { ok=true; for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } } break;
+    case 'Parallel': { const rs = await Promise.all(n.children.map(runNode)); ok = n.policy==='any' ? rs.some(Boolean) : rs.every(Boolean); break; }
+    case 'Loop': { let g=0; while (evalExpr(n.while) && g++<50) { for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } if (!ok) break; } break; }
+    case 'Condition': if (n.expr) ok = !!evalExpr(n.expr); else { for (const c of n.check) { mark(c.id,'running'); await sleep(dur(0.3)); mark(c.id,'done'); emit('check', {cond:c.type, result:true}); } } break;
+    case 'Gate': { const d = await askGate(n); emit('decision', {choice:d}); if (d==='abort') throw new Aborted(); ok = d!=='hold'; break; }
+    case 'Set': setPath(n.target.replace(/^\$/,''), evalExpr(n.expr)); break;
+  } } finally { if (!state.abort) mark(n.id, ok ? 'done' : 'fail'); }
+  emit('node_exit', {node:n.type, status: ok?'ok':'fail'}); return ok;
+}
+async function runProgram() {
+  if (state.running || !prog?.main) return;
+  state.running = true; state.abort = false; state.failOnce = document.getElementById('optFail').checked;
+  document.getElementById('btnRun').disabled = true; document.getElementById('btnStop').disabled = false;
+  ui.events.innerHTML = ''; clearMarks(); state.bb = {item:'case', stack:{src:3,tgt:0}, park:{z:1.1}, drop:{x:0.55,y:-0.25,z:0.92}, params:{home_left:'[…]'}}; state.t0 = performance.now();
+  selectTab('paneEvents'); setStatus('실행 중', 'run'); emit('run_start', {program:'task3_item', robot:'mock'});
+  try { const ok = await runNode(prog.main); emit('run_end', {status: ok?'ok':'fail'}); setStatus(ok ? '끝: ok' : '끝: fail', ok?'ok':'fail'); }
+  catch (e) { if (!(e instanceof Aborted)) { console.error(e); setStatus('오류: '+e.message, 'fail'); } else { emit('run_abort', {}); setStatus('중단 → on_abort', 'fail'); state.abort = false; ui.gate.hidden = true; if (prog.on_abort) await runNode(prog.on_abort).catch(()=>{}); setStatus('중단됨. 복구 트리까지 끝.', 'fail'); } }
+  finally { state.running = false; document.getElementById('btnRun').disabled = false; document.getElementById('btnStop').disabled = true; ui.gate.hidden = true; }
+}
+function selectTab(id) { document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.pane===id))); document.querySelectorAll('.pane').forEach(p => p.hidden = p.id!==id); }
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => selectTab(b.dataset.pane));
+document.getElementById('btnRun').onclick = runProgram; document.getElementById('btnStop').onclick = () => { state.abort = true; };
+document.getElementById('optSpeed').oninput = e => state.speed = Number(e.target.value);
+
+redraw();
+// 해시 옵션: #flow|tree|outline (뷰), task3 (예시), autorun (바로 실행), embed (그래프만: 슬라이드 삽입용), views (뷰 선택 버튼 보이기)
+if (location.hash.startsWith('#')) { const opts = location.hash.slice(1).split(','); const v = opts[0];
+  if (opts.includes('views')) document.getElementById('views').hidden = false;
+  if (['tree','flow','outline'].includes(v)) document.querySelector(`#views [data-v="${v}"]`).click();
+  if (opts.includes('task3')) { document.getElementById('selEx').value='task3'; yamlBox.value = EXAMPLE; redraw(); }
+  if (opts.includes('embed')) { document.querySelector('header').hidden = true; document.querySelector('aside').hidden = true; document.getElementById('zoom').hidden = true; redraw(); }
+  if (opts.includes('autorun')) { document.getElementById('optFail').checked = false; setTimeout(runProgram, 300); } }
+addEventListener('resize', () => { if (location.hash.includes('embed')) fit(); });
+</script>
+</body>
+</html>

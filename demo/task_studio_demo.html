@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Studio 블록 데모</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen tool. Header strip, Blockly workspace left, inspector (YAML / 이벤트 / 블랙보드) right. */
+:root {
+  --bg: #f3f4f2; --panel: #ffffff; --fg: #1d2420; --muted: #6a736e; --line: #d8dcd9;
+  --accent: #0f6e56; --accent-fg: #ffffff; --run: #d97706; --ok: #0f6e56; --fail: #b4232c; --code-bg: #f7f8f6;
+  --font: "IBM Plex Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161a18; --panel: #1f2422; --fg: #e6e9e6; --muted: #98a19c; --line: #343b37;
+  --accent: #4fb596; --accent-fg: #0e1512; --run: #f1a33a; --ok: #4fb596; --fail: #ef6b73; --code-bg: #181d1b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161a18; --panel: #1f2422; --fg: #e6e9e6; --muted: #98a19c; --line: #343b37;
+  --accent: #4fb596; --accent-fg: #0e1512; --run: #f1a33a; --ok: #4fb596; --fail: #ef6b73; --code-bg: #181d1b; color-scheme: dark }
+
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-block: 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+header h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+.spacer { flex: 1; }
+button { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 500; }
+button.danger { color: var(--fail); }
+button:disabled { opacity: .45; cursor: default; }
+label.opt { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+label.opt input[type=range] { width: 90px; }
+
+main { flex: 1; min-height: 0; display: flex; }
+#blocklyDiv { flex: 1; min-width: 0; min-height: 0; }
+aside { width: 400px; max-width: 45vw; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; border-radius: 0; background: none; padding: 9px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 500; }
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane[hidden], #gate[hidden] { display: none; }
+textarea#yaml { flex: 1; min-height: 0; resize: none; border: 0; padding: 12px 14px; font: 12.5px/1.5 var(--mono); background: var(--code-bg); color: var(--fg); white-space: pre; overflow: auto; }
+textarea#yaml:focus { outline: none; }
+.pane-foot { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+#events { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 14px; font: 12px/1.55 var(--mono); background: var(--code-bg); }
+#events div { white-space: pre; }
+#events .enter { color: var(--muted); }
+#events .ok { color: var(--ok); }
+#events .fail { color: var(--fail); }
+#events .guard { color: var(--run); }
+#bb { flex: 1; min-height: 0; overflow: auto; padding: 8px 14px; }
+#bb table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+#bb th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+#bb td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; font-family: var(--mono); font-size: 12px; }
+#bb td.t { color: var(--muted); font-family: var(--font); }
+
+#gate { margin: 10px 12px 0; padding: 12px 14px; border: 1px solid var(--run); border-radius: 8px; background: var(--panel); }
+#gate .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--run); font-weight: 600; }
+#gate p { margin: 4px 0 10px; font-weight: 500; }
+#gate .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+#status { font-size: 12.5px; color: var(--muted); padding: 6px 14px; border-top: 1px solid var(--line); min-height: 18px; }
+#status.run { color: var(--run); }  #status.ok { color: var(--ok); }  #status.fail { color: var(--fail); }
+
+/* Blockly: execution highlight */
+.ts-running > .blocklyPath { stroke: #ff9a1f !important; stroke-width: 5px !important; }
+.ts-done > .blocklyPath { stroke: #22d37f !important; stroke-width: 4px !important; }
+.ts-fail > .blocklyPath { stroke: #ff3b47 !important; stroke-width: 5px !important; }
+.blocklyToolboxDiv { font-family: var(--font); }
+.blocklyTreeLabel { font-size: 13px; }
+
+@media (max-width: 820px) {
+  main { flex-direction: column; }
+  #blocklyDiv { height: 55vh; flex: none; }
+  aside { width: auto; max-width: none; border-left: 0; border-top: 1px solid var(--line); flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<header>
+  <h1>Task Studio <small>블록 → YAML → 실행 (가짜 로봇)</small></h1>
+  <span class="spacer"></span>
+  <button id="btnExample">Task 3 아이템 불러오기</button>
+  <button id="btnClear">비우기</button>
+  <label class="opt"><input type="checkbox" id="optFail" checked> 첫 검출 실패 넣기</label>
+  <label class="opt">속도 <input type="range" id="optSpeed" min="1" max="6" value="3"></label>
+  <button id="btnRun" class="primary">▶ 실행</button>
+  <button id="btnStop" class="danger" disabled>■ 정지</button>
+</header>
+<main>
+  <div id="blocklyDiv"></div>
+  <aside>
+    <div id="gate" hidden>
+      <div class="eyebrow">운영자 게이트</div>
+      <p id="gatePrompt"></p>
+      <div class="btns" id="gateBtns"></div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-pane="paneYaml" id="tabYaml">YAML</button>
+      <button role="tab" aria-selected="false" data-pane="paneEvents" id="tabEvents">이벤트</button>
+      <button role="tab" aria-selected="false" data-pane="paneBB" id="tabBB">블랙보드</button>
+    </div>
+    <section class="pane" id="paneYaml">
+      <textarea id="yaml" spellcheck="false" aria-label="프로그램 YAML"></textarea>
+      <div class="pane-foot"><span id="yamlNote">블록을 움직이면 바로 다시 써집니다. 직접 고친 뒤 적용할 수도 있습니다.</span><span class="spacer"></span><button id="btnApply">YAML → 블록</button></div>
+    </section>
+    <section class="pane" id="paneEvents" hidden>
+      <pre id="events"></pre>
+      <div class="pane-foot">실행 1회 = JSONL 파일 1개. node_enter / node_exit 는 실행기가 자동으로 쓴다.</div>
+    </section>
+    <section class="pane" id="paneBB" hidden>
+      <div id="bb"></div>
+      <div class="pane-foot">$변수 = 블록 사이를 흐르는 값. 타입이 맞는 구멍에만 꽂힌다.</div>
+    </section>
+    <div id="status">준비됨</div>
+  </aside>
+</main>
+
+<script src="https://unpkg.com/blockly@10.4.3/blockly.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script>
+/* ============================================================
+   1. 스킬 스키마 (실제로는 task_studio/editor/schema.py 가 pydantic 모델에서 생성)
+   kind: control | action | cond.  layer: base | task.
+   inputs: {k, t}  t ∈ enum/num/text/bool (블록 안 필드)  또는  Pose/ObjectPose/Number/String/Station/Item/ItemSpec (값 구멍)
+   ============================================================ */
+const VALUE_TYPES = ['Pose','ObjectPose','Number','String','Station','Item','ItemSpec','Result'];
+const SCHEMA = [
+  // 기본 동작
+  {name:'MoveJoints', kind:'action', layer:'base', part:'팔·몸통·머리', inputs:[{k:'group',t:'enum',opts:['left_arm','right_arm','torso','head']},{k:'q',t:'text',def:'$params.home_left'},{k:'speed',t:'num',def:0.5}], out:'Result'},
+  {name:'MoveEE', kind:'action', layer:'base', part:'팔', inputs:[{k:'pose',t:'Pose'},{k:'straight',t:'bool',def:true},{k:'keep_xy',t:'bool',def:false},{k:'speed',t:'num',def:0.1}], out:'Result'},
+  {name:'BaseMove', kind:'action', layer:'base', part:'섀시', inputs:[{k:'dx',t:'num',def:0},{k:'dy',t:'num',def:0.3},{k:'dyaw',t:'num',def:0},{k:'speed',t:'num',def:0.05}], out:'Result'},
+  {name:'Navigate', kind:'action', layer:'base', part:'섀시', inputs:[{k:'x',t:'num',def:0},{k:'y',t:'num',def:0},{k:'yaw',t:'num',def:0},{k:'speed',t:'num',def:0.3}], out:'Result'},
+  {name:'SuctionOn', kind:'action', layer:'base', part:'석션', inputs:[], out:'Result'},
+  {name:'SuctionOff', kind:'action', layer:'base', part:'석션', inputs:[{k:'blow',t:'bool',def:false}], out:'Result'},
+  {name:'GripperMove', kind:'action', layer:'base', part:'그리퍼', inputs:[{k:'width',t:'num',def:0.04},{k:'force',t:'num',def:20}], out:'Result'},
+  {name:'CaptureFrame', kind:'action', layer:'base', part:'머리 카메라', inputs:[{k:'camera',t:'enum',opts:['head']}], out:'Frame'},
+  {name:'Detect', kind:'action', layer:'base', part:'머리 카메라', inputs:[{k:'detector',t:'text',def:'bev_obb'},{k:'cls',t:'String'}], out:'ObjectPose'},
+  {name:'ReadWrench', kind:'action', layer:'base', part:'손목 센서', inputs:[{k:'arm',t:'enum',opts:['left','right']}], out:'Wrench'},
+  {name:'Wait', kind:'action', layer:'base', part:'타이머', inputs:[{k:'timeout',t:'num',def:2.0}], out:'Result'},
+  // 과제 동작 (Level 1·2, tasks/lges)
+  {name:'DetectObject', kind:'action', layer:'task', part:'보기', inputs:[{k:'cls',t:'enum',opts:['case','bin','box','lid']},{k:'n',t:'num',def:5}], out:'ObjectPose'},
+  {name:'ResolvePose', kind:'action', layer:'task', part:'집기', inputs:[{k:'det',t:'ObjectPose'},{k:'item',t:'Item'}], out:'Pose'},
+  {name:'ExpectedZ', kind:'action', layer:'task', part:'장부', inputs:[{k:'station',t:'Station'},{k:'item',t:'Item'},{k:'layers',t:'Number'}], out:'Number'},
+  {name:'ItemSpec', kind:'action', layer:'task', part:'장부', inputs:[{k:'item',t:'Item'}], out:'ItemSpec'},
+  {name:'SuctionPick', kind:'action', layer:'task', part:'집기', inputs:[{k:'pose',t:'Pose'},{k:'expected_z',t:'Number'}], out:'Result'},
+  {name:'ReadCode', kind:'action', layer:'task', part:'바코드 리더', inputs:[{k:'window',t:'num',def:2.0}], out:'String'},
+  {name:'DestStation', kind:'action', layer:'task', part:'장부', inputs:[{k:'item',t:'Item'},{k:'barcode',t:'String'}], out:'Station'},
+  {name:'GoToStation', kind:'action', layer:'task', part:'이동', inputs:[{k:'station',t:'Station'}], out:'Result'},
+  {name:'ParkDuringLeg', kind:'action', layer:'task', part:'이동', inputs:[{k:'station',t:'Station'}], out:'Result'},
+  {name:'SlotPose', kind:'action', layer:'task', part:'놓기', inputs:[{k:'det',t:'ObjectPose'},{k:'item',t:'Item'}], out:'Pose'},
+  {name:'SuctionPlace', kind:'action', layer:'task', part:'놓기', inputs:[{k:'pose',t:'Pose'},{k:'expected_z',t:'Number'},{k:'release_above',t:'Number'}], out:'Result'},
+  // 조건
+  {name:'ForceOver', kind:'cond', layer:'base', inputs:[{k:'axis',t:'enum',opts:['z','x','y']},{k:'threshold',t:'num',def:10},{k:'relative',t:'bool',def:true}]},
+  {name:'Sealed', kind:'cond', layer:'base', inputs:[]},
+  {name:'Timeout', kind:'cond', layer:'base', inputs:[{k:'s',t:'num',def:10}]},
+  {name:'Reachable', kind:'cond', layer:'base', inputs:[{k:'pose',t:'Pose'}]},
+  {name:'SafetyFloor', kind:'cond', layer:'task', inputs:[{k:'z_min',t:'num',def:0.82}]},
+  {name:'BEVInWindow', kind:'cond', layer:'task', inputs:[{k:'cls',t:'enum',opts:['case','bin','box','lid']}]},
+];
+const BY_NAME = Object.fromEntries(SCHEMA.map(s => [s.name, s]));
+const HUE = {control: 215, base: 160, task: 28, cond: 290, value: 55, program: 0};
+
+/* ============================================================
+   2. Blockly 블록 정의
+   ============================================================ */
+function defineBlocks() {
+  const defs = [];
+  // 프로그램 (모자 블록)
+  defs.push({type:'program_main', message0:'프로그램 시작  main', message1:'%1', args1:[{type:'input_statement', name:'BODY', check:'Node'}], colour:HUE.program, hat:'cap', tooltip:'프로그램의 시작 트리'});
+  defs.push({type:'program_abort', message0:'중단되면  on_abort', message1:'%1', args1:[{type:'input_statement', name:'BODY', check:'Node'}], colour:HUE.program, hat:'cap', tooltip:'어디서 멈추든 실행되는 복구 트리'});
+  // 제어 노드
+  const C = HUE.control;
+  defs.push({type:'Sequence', message0:'Sequence  차례로', message1:'%1', args1:[{type:'input_statement',name:'BODY',check:'Node'}], previousStatement:'Node', nextStatement:'Node', colour:C, tooltip:'차례로. 하나 실패하면 실패'});
+  defs.push({type:'Fallback', message0:'Fallback  될 때까지', message1:'%1', args1:[{type:'input_statement',name:'BODY',check:'Node'}], previousStatement:'Node', nextStatement:'Node', colour:C, tooltip:'차례로. 하나 성공하면 성공'});
+  defs.push({type:'Retry', message0:'Retry  n %1', args0:[{type:'field_number',name:'n',value:3,min:1,precision:1}], message1:'%1', args1:[{type:'input_statement',name:'BODY',check:'Node'}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  defs.push({type:'Parallel', message0:'Parallel  %1', args0:[{type:'field_dropdown',name:'policy',options:[['전부 끝나면','all'],['하나 끝나면','any']]}], message1:'%1', args1:[{type:'input_statement',name:'BODY',check:'Node'}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  defs.push({type:'Loop', message0:'Loop  while %1', args0:[{type:'field_input',name:'while',text:'$stack.src >= 1'}], message1:'%1', args1:[{type:'input_statement',name:'BODY',check:'Node'}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  defs.push({type:'Condition', message0:'Condition  한 번 검사', message1:'조건 %1', args1:[{type:'input_statement',name:'CHECK',check:'Cond'}], message2:'또는 식 %1', args2:[{type:'field_input',name:'expr',text:''}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  defs.push({type:'Gate', message0:'Gate  운영자에게 %1', args0:[{type:'field_input',name:'prompt',text:'계속할까요?'}], message1:'허용 %1', args1:[{type:'field_input',name:'allowed',text:'continue, abort'}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  defs.push({type:'Set', message0:'Set  %1 = %2', args0:[{type:'field_input',name:'target',text:'$stack.src'},{type:'field_input',name:'expr',text:'$stack.src - 1'}], previousStatement:'Node', nextStatement:'Node', colour:C});
+  // 동작 / 조건 (스키마에서 생성)
+  for (const s of SCHEMA) {
+    const d = {type:s.name, colour: s.kind==='cond' ? HUE.cond : HUE[s.layer], tooltip:(s.layer==='base'?'① 기본':'② 과제')+(s.part?' · '+s.part:'')};
+    let msg = s.name, args = [];
+    s.inputs.forEach((inp, i) => {
+      msg += `  ${inp.k} %${i+1}`;
+      if (inp.t==='enum') args.push({type:'field_dropdown', name:inp.k, options: inp.opts.map(o=>[o,o])});
+      else if (inp.t==='num') args.push({type:'field_number', name:inp.k, value: inp.def ?? 0});
+      else if (inp.t==='text') args.push({type:'field_input', name:inp.k, text: inp.def ?? ''});
+      else if (inp.t==='bool') args.push({type:'field_checkbox', name:inp.k, checked: !!inp.def});
+      else args.push({type:'input_value', name:inp.k, check: inp.t==='Item' ? ['Item','String'] : inp.t==='Station' ? ['Station','String'] : inp.t});
+    });
+    d.message0 = msg; d.args0 = args; d.inputsInline = true;
+    if (s.kind==='action') {
+      d.message1 = '가드 %1'; d.args1 = [{type:'input_statement', name:'GUARDS', check:'Cond'}];
+      d.message2 = '→ $ %1'; d.args2 = [{type:'field_input', name:'OUT', text:''}];
+      d.previousStatement = 'Node'; d.nextStatement = 'Node';
+    } else { d.previousStatement = 'Cond'; d.nextStatement = 'Cond'; }
+    defs.push(d);
+  }
+  // 값
+  defs.push({type:'var_ref', message0:'$ %1 : %2', args0:[{type:'field_input',name:'NAME',text:'x'},{type:'field_dropdown',name:'TYPE',options:VALUE_TYPES.map(t=>[t,t])}], output:'Pose', colour:HUE.value, tooltip:'블랙보드 변수. 타입이 맞는 구멍에만 꽂힌다'});
+  defs.push({type:'lit_station', message0:'스테이션 %1', args0:[{type:'field_dropdown',name:'V',options:[['source','source'],['target','target'],['left','left']]}], output:'Station', colour:HUE.value});
+  defs.push({type:'lit_item', message0:'품목 %1', args0:[{type:'field_dropdown',name:'V',options:[['case','case'],['battery_2','battery_2'],['battery_1','battery_1']]}], output:'Item', colour:HUE.value});
+  Blockly.defineBlocksWithJsonArray(defs);
+  // var_ref: 타입 드롭다운이 바뀌면 출력 타입도 바뀐다 (= 타입 검사)
+  const base = Blockly.Blocks['var_ref'];
+  const prevInit = base.init;
+  base.init = function () {
+    prevInit.call(this);
+    const f = this.getField('TYPE');
+    f.setValidator(v => { this.setOutput(true, v); return v; });
+  };
+  // 직렬화 로드 때는 필드보다 먼저 extraState 가 들어오므로 여기서 출력 타입을 맞춘다
+  base.saveExtraState = function () { return {type: this.getFieldValue('TYPE')}; };
+  base.loadExtraState = function (st) { if (st && st.type) { this.setOutput(true, st.type); this.setFieldValue(st.type, 'TYPE'); } };
+}
+
+function toolbox() {
+  const blk = t => ({kind:'block', type:t});
+  return {kind:'categoryToolbox', contents:[
+    {kind:'category', name:'프로그램', colour:HUE.program, contents:[blk('program_main'), blk('program_abort')]},
+    {kind:'category', name:'제어 노드', colour:HUE.control, contents:['Sequence','Fallback','Retry','Parallel','Loop','Condition','Gate','Set'].map(blk)},
+    {kind:'category', name:'① 기본 동작', colour:HUE.base, contents:SCHEMA.filter(s=>s.kind==='action'&&s.layer==='base').map(s=>blk(s.name))},
+    {kind:'category', name:'② 과제 동작 (LGES)', colour:HUE.task, contents:SCHEMA.filter(s=>s.kind==='action'&&s.layer==='task').map(s=>blk(s.name))},
+    {kind:'category', name:'조건', colour:HUE.cond, contents:SCHEMA.filter(s=>s.kind==='cond').map(s=>blk(s.name))},
+    {kind:'category', name:'값', colour:HUE.value, contents:[blk('var_ref'), blk('lit_station'), blk('lit_item'), blk('math_number'), blk('text')]},
+  ]};
+}
+
+/* ============================================================
+   3. 블록 → 트리 (중간 표현) → YAML
+   ============================================================ */
+const CONTROL = new Set(['Sequence','Fallback','Retry','Parallel','Loop','Condition','Gate','Set']);
+
+function valueOf(block, name) {
+  const t = block.getInputTargetBlock(name);
+  if (!t) return null;
+  if (t.type==='var_ref') return {var: t.getFieldValue('NAME'), vtype: t.getFieldValue('TYPE')};
+  if (t.type==='math_number') return {lit: Number(t.getFieldValue('NUM'))};
+  if (t.type==='text') return {lit: t.getFieldValue('TEXT')};
+  return {lit: t.getFieldValue('V')};
+}
+function chain(first) { const out=[]; for (let b=first; b; b=b.getNextBlock()) out.push(b); return out; }
+
+function blockToNode(b) {
+  const n = {type:b.type, id:b.id};
+  if (CONTROL.has(b.type)) {
+    n.kind = 'control';
+    if (['Sequence','Fallback','Retry','Parallel','Loop'].includes(b.type)) n.children = chain(b.getInputTargetBlock('BODY')).map(blockToNode);
+    if (b.type==='Retry') n.n = Number(b.getFieldValue('n'));
+    if (b.type==='Parallel') n.policy = b.getFieldValue('policy');
+    if (b.type==='Loop') n.while = b.getFieldValue('while');
+    if (b.type==='Condition') { n.check = chain(b.getInputTargetBlock('CHECK')).map(blockToNode); n.expr = b.getFieldValue('expr'); }
+    if (b.type==='Gate') { n.prompt = b.getFieldValue('prompt'); n.allowed = b.getFieldValue('allowed').split(',').map(s=>s.trim()).filter(Boolean); }
+    if (b.type==='Set') { n.target = b.getFieldValue('target'); n.expr = b.getFieldValue('expr'); }
+    return n;
+  }
+  const s = BY_NAME[b.type]; n.kind = s.kind; n.inputs = {};
+  for (const inp of s.inputs) {
+    if (['enum','num','text','bool'].includes(inp.t)) {
+      let v = b.getFieldValue(inp.k);
+      if (inp.t==='num') v = Number(v); else if (inp.t==='bool') v = (v==='TRUE');
+      n.inputs[inp.k] = {lit: v};
+    } else n.inputs[inp.k] = valueOf(b, inp.k);
+  }
+  if (s.kind==='action') { n.guards = chain(b.getInputTargetBlock('GUARDS')).map(blockToNode); n.out = (b.getFieldValue('OUT')||'').trim(); }
+  return n;
+}
+function workspaceToProgram(ws) {
+  const prog = {main:null, on_abort:null};
+  for (const top of ws.getTopBlocks(true)) {
+    if (top.type==='program_main') prog.main = chain(top.getInputTargetBlock('BODY')).map(blockToNode);
+    if (top.type==='program_abort') prog.on_abort = chain(top.getInputTargetBlock('BODY')).map(blockToNode);
+  }
+  return prog;
+}
+
+// --- YAML 쓰기
+function yv(v) {
+  if (v==null) return 'null';
+  if (v.var!==undefined) return '$'+v.var;
+  const x = v.lit;
+  if (typeof x==='number' || typeof x==='boolean') return String(x);
+  if (/^[A-Za-z_][\w.]*$/.test(x) || /^\$[\w.]+$/.test(x)) return x;
+  return JSON.stringify(x);
+}
+function inlineLeaf(n) {
+  const parts = Object.entries(n.inputs).filter(([,v])=>v!=null).map(([k,v])=>`${k}: ${yv(v)}`);
+  if (n.guards && n.guards.length) parts.push(`guards: [${n.guards.map(g=>inlineLeaf(g)).join(', ')}]`);
+  if (n.out) parts.push(`out: $${n.out}`);
+  return parts.length ? `${n.type}: {${parts.join(', ')}}` : `${n.type}: {}`;
+}
+function emitList(nodes, ind, lines) {
+  const pad = ' '.repeat(ind);
+  for (const n of nodes) {
+    if (n.kind!=='control') { lines.push(`${pad}- ${inlineLeaf(n)}`); continue; }
+    switch (n.type) {
+      case 'Sequence': case 'Fallback':
+        lines.push(`${pad}- ${n.type}:`); emitList(n.children, ind+4, lines); break;
+      case 'Retry':
+        lines.push(`${pad}- Retry:`, `${pad}    n: ${n.n}`, `${pad}    body:`); emitList(n.children, ind+6, lines); break;
+      case 'Parallel':
+        lines.push(`${pad}- Parallel:`, `${pad}    policy: ${n.policy}`, `${pad}    children:`); emitList(n.children, ind+6, lines); break;
+      case 'Loop':
+        lines.push(`${pad}- Loop:`, `${pad}    while: ${JSON.stringify(n.while)}`, `${pad}    body:`); emitList(n.children, ind+6, lines); break;
+      case 'Condition':
+        if (n.expr) lines.push(`${pad}- Condition: {expr: ${JSON.stringify(n.expr)}}`);
+        else lines.push(`${pad}- Condition: {check: [${n.check.map(inlineLeaf).join(', ')}]}`);
+        break;
+      case 'Gate':
+        lines.push(`${pad}- Gate: {prompt: ${JSON.stringify(n.prompt)}, allowed: [${n.allowed.join(', ')}]}`); break;
+      case 'Set':
+        lines.push(`${pad}- Set: {${JSON.stringify(n.target)}: ${JSON.stringify(n.expr)}}`); break;
+    }
+  }
+}
+function programToYaml(prog, name) {
+  const lines = [`# tasks/lges/programs/${name}.yaml   (블록 편집기가 씀)`];
+  for (const key of ['main','on_abort']) {
+    const body = prog[key]; if (!body) continue;
+    lines.push(`${key}:`);
+    if (body.length===1 && (body[0].type==='Sequence'||body[0].type==='Fallback')) { lines.push(`  ${body[0].type}:`); emitList(body[0].children, 4, lines); }
+    else { lines.push('  Sequence:'); emitList(body, 4, lines); }
+  }
+  return lines.join('\n') + '\n';
+}
+
+/* ============================================================
+   4. YAML → 트리 → 블록 (from_yaml)
+   ============================================================ */
+function parseValue(raw, inp) {
+  if (typeof raw==='string' && raw.startsWith('$') && !['text'].includes(inp.t)) {
+    const vt = ['enum','num','text','bool'].includes(inp.t) ? 'String' : inp.t;
+    return {var: raw.slice(1), vtype: vt};
+  }
+  return {lit: raw};
+}
+function parseLeaf(obj) {
+  const [type, args] = Object.entries(obj)[0];
+  const s = BY_NAME[type]; if (!s) throw new Error(`모르는 블록: ${type}`);
+  const n = {type, kind:s.kind, inputs:{}};
+  for (const inp of s.inputs) if (args && args[inp.k]!==undefined) n.inputs[inp.k] = parseValue(args[inp.k], inp);
+  if (s.kind==='action') { n.guards = (args?.guards||[]).map(parseLeaf); n.out = args?.out ? String(args.out).replace(/^\$/,'') : ''; }
+  return n;
+}
+function parseList(list) {
+  return (list||[]).map(item => {
+    const [type, args] = Object.entries(item)[0];
+    if (!CONTROL.has(type)) return parseLeaf(item);
+    const n = {type, kind:'control'};
+    if (type==='Sequence'||type==='Fallback') n.children = parseList(args);
+    if (type==='Retry') { n.n = args.n ?? 3; n.children = parseList(args.body); }
+    if (type==='Parallel') { n.policy = args.policy ?? 'all'; n.children = parseList(args.children); }
+    if (type==='Loop') { n.while = args.while ?? ''; n.children = parseList(args.body); }
+    if (type==='Condition') { n.expr = args.expr ?? ''; n.check = (args.check||[]).map(parseLeaf); }
+    if (type==='Gate') { n.prompt = args.prompt ?? ''; n.allowed = args.allowed ?? []; }
+    if (type==='Set') { const [t,e] = Object.entries(args)[0]; n.target = t; n.expr = String(e); }
+    return n;
+  });
+}
+function yamlToProgram(text) {
+  const doc = jsyaml.load(text) || {};
+  const prog = {main:null, on_abort:null};
+  for (const key of ['main','on_abort']) {
+    if (!doc[key]) continue;
+    const [type, args] = Object.entries(doc[key])[0];
+    prog[key] = parseList([{[type]: args}]);
+  }
+  return prog;
+}
+// 트리 → Blockly 직렬화 상태
+function valueState(v, inp) {
+  if (!v) return null;
+  if (v.var!==undefined) { const T = v.vtype || (VALUE_TYPES.includes(inp.t)?inp.t:'String'); return {type:'var_ref', extraState:{type:T}, fields:{NAME:v.var, TYPE:T}}; }
+  if (inp.t==='Station') return {type:'lit_station', fields:{V:String(v.lit)}};
+  if (inp.t==='Item') return {type:'lit_item', fields:{V:String(v.lit)}};
+  if (inp.t==='Number') return {type:'math_number', fields:{NUM:Number(v.lit)}};
+  return {type:'text', fields:{TEXT:String(v.lit)}};
+}
+function chainState(nodes) {
+  let head = null, cur = null;
+  for (const n of nodes) { const st = nodeState(n); if (!head) head = st; else cur.next = {block: st}; cur = st; }
+  return head;
+}
+function nodeState(n) {
+  const st = {type:n.type, fields:{}, inputs:{}};
+  if (n.kind==='control') {
+    if (n.children) { const h = chainState(n.children); if (h) st.inputs.BODY = {block:h}; }
+    if (n.type==='Retry') st.fields.n = n.n;
+    if (n.type==='Parallel') st.fields.policy = n.policy;
+    if (n.type==='Loop') st.fields.while = n.while;
+    if (n.type==='Condition') { st.fields.expr = n.expr||''; const h = chainState(n.check||[]); if (h) st.inputs.CHECK = {block:h}; }
+    if (n.type==='Gate') { st.fields.prompt = n.prompt; st.fields.allowed = (n.allowed||[]).join(', '); }
+    if (n.type==='Set') { st.fields.target = n.target; st.fields.expr = n.expr; }
+    return st;
+  }
+  const s = BY_NAME[n.type];
+  for (const inp of s.inputs) {
+    const v = n.inputs[inp.k]; if (!v) continue;
+    if (['enum','num','text','bool'].includes(inp.t)) st.fields[inp.k] = inp.t==='bool' ? (v.lit ? 'TRUE':'FALSE') : (v.var!==undefined ? '$'+v.var : v.lit);
+    else { const vs = valueState(v, inp); if (vs) st.inputs[inp.k] = {block: vs}; }
+  }
+  if (s.kind==='action') { st.fields.OUT = n.out||''; const h = chainState(n.guards||[]); if (h) st.inputs.GUARDS = {block:h}; }
+  return st;
+}
+function loadProgram(ws, prog) {
+  const blocks = [];
+  let y = 20;
+  for (const key of ['main','on_abort']) {
+    if (!prog[key]) continue;
+    const hat = {type: key==='main'?'program_main':'program_abort', x: key==='main'?20:620, y, inputs:{}};
+    const h = chainState(prog[key]); if (h) hat.inputs.BODY = {block:h};
+    blocks.push(hat);
+  }
+  Blockly.serialization.workspaces.load({blocks:{languageVersion:0, blocks}}, ws);
+}
+
+/* ============================================================
+   5. 예시 프로그램: Task 3 아이템 하나 (DESIGN.md §5)
+   ============================================================ */
+const EXAMPLE_YAML = `main:
+  Sequence:
+    - ItemSpec: {item: $item, out: $spec}
+    - GoToStation: {station: source}
+    - Fallback:
+        - Sequence:
+            - BaseMove: {dx: 0, dy: 0.3, dyaw: 0, speed: 0.05, guards: [BEVInWindow: {cls: case}]}
+            - DetectObject: {cls: case, n: 5, out: $det}
+        - Gate: {prompt: "소스 케이스를 못 찾음", allowed: [move, continue, abort]}
+    - ResolvePose: {det: $det, item: $item, out: $aim}
+    - Condition: {check: [Reachable: {pose: $aim}]}
+    - ExpectedZ: {station: source, item: $item, layers: $stack.src, out: $ez}
+    - SuctionPick: {pose: $aim, expected_z: $ez, guards: [SafetyFloor: {z_min: 0.82}], out: $pick}
+    - ReadCode: {window: 2, out: $code}
+    - DestStation: {item: $item, barcode: $code, out: $dest}
+    - ParkDuringLeg: {station: $dest}
+    - Fallback:
+        - DetectObject: {cls: case, n: 5, out: $tdet}
+        - Gate: {prompt: "타깃 케이스를 못 찾음", allowed: [move, abort]}
+    - SlotPose: {det: $tdet, item: $item, out: $slot}
+    - ExpectedZ: {station: target, item: $item, layers: $stack.tgt, out: $ez_t}
+    - SuctionPlace: {pose: $slot, expected_z: $ez_t, release_above: $spec.release_above, out: $place}
+    - Fallback:
+        - Condition: {expr: "$place.status == 'ok'"}
+        - Gate: {prompt: "놓기 실패, 부품을 들고 있음", allowed: [release, hold, abort]}
+    - ParkDuringLeg: {station: source}
+on_abort:
+  Sequence:
+    - MoveEE: {pose: $park, straight: true, keep_xy: true, speed: 0.1}
+    - MoveJoints: {group: left_arm, q: $params.home_left, speed: 0.5}
+`;
+
+/* ============================================================
+   6. 가짜 로봇 실행기 (자체 미니 BT 와 같은 의미론)
+   ============================================================ */
+class Aborted extends Error {}
+const ui = {
+  events: document.getElementById('events'), bb: document.getElementById('bb'), status: document.getElementById('status'),
+  gate: document.getElementById('gate'), gatePrompt: document.getElementById('gatePrompt'), gateBtns: document.getElementById('gateBtns'),
+};
+const state = { running:false, abort:false, failOnce:false, speed:3, bb:{}, t0:0, seq:0 };
+
+function setStatus(text, cls) { ui.status.textContent = text; ui.status.className = cls||''; }
+function emit(ev, data) {
+  const rec = {t: +((performance.now()-state.t0)/1000).toFixed(3), ev, ...data};
+  const div = document.createElement('div');
+  div.className = ev==='node_enter' ? 'enter' : ev==='guard' ? 'guard' : (data.status==='ok' ? 'ok' : (data.status ? 'fail' : ''));
+  div.textContent = JSON.stringify(rec);
+  ui.events.appendChild(div); ui.events.scrollTop = ui.events.scrollHeight;
+}
+function mark(id, cls) {
+  const b = ws.getBlockById(id); if (!b) return;
+  const g = b.getSvgRoot(); g.classList.remove('ts-running','ts-done','ts-fail'); if (cls) g.classList.add(cls);
+}
+function clearMarks() { for (const b of ws.getAllBlocks(false)) b.getSvgRoot().classList.remove('ts-running','ts-done','ts-fail'); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function tick(totalMs, onProgress) {
+  const step = 60; let el = 0;
+  while (el < totalMs) { if (state.abort) throw new Aborted(); await sleep(step); el += step; if (onProgress && onProgress(el/totalMs)) return 'guard'; }
+  return 'done';
+}
+const dur = base => base * 1000 / (state.speed/3);
+
+function getPath(path) { return path.split('.').reduce((o,k)=> (o==null? undefined : o[k]), state.bb); }
+function setPath(path, val) { const ks = path.split('.'); let o = state.bb; for (const k of ks.slice(0,-1)) { o[k] = o[k] ?? {}; o = o[k]; } o[ks.at(-1)] = val; }
+function evalExpr(expr) {
+  const js = expr.replace(/\$([\w.]+)/g, (_, p) => JSON.stringify(getPath(p) ?? null));
+  try { return Function('"use strict"; return (' + js + ')')(); } catch (e) { return false; }
+}
+function resolve(v) { if (!v) return undefined; return v.var!==undefined ? getPath(v.var) : v.lit; }
+
+// 파트별 가짜 응답
+const MOCK = {
+  DetectObject: n => { if (state.failOnce) { state.failOnce=false; return {status:'fail', reason:'no_object_in_view'}; } return {cls: resolve(n.inputs.cls), x:0.61, y:0.18, yaw:0.02, size:[0.62,0.42,0.17], conf:0.93}; },
+  ResolvePose: () => ({x:0.61, y:0.18, z:0.93, roll:0, pitch:3.14, yaw:0.02}),
+  SlotPose: () => ({x:0.58, y:-0.21, z:0.95, roll:0, pitch:3.14, yaw:0.0}),
+  ExpectedZ: () => 0.842,
+  ItemSpec: n => { const it = resolve(n.inputs.item); return {item: it, release_above: it==='case' ? 0.027 : 0, cup_offset: 0.012}; },
+  SuctionPick: () => ({status:'ok', stopped_by:'ForceOver', contact_z:0.838, sealed:true}),
+  SuctionPlace: () => ({status:'ok', stopped_by:'ForceOver', contact_z:0.869, early_contact:false}),
+  ReadCode: () => 'BAT-2219-07',
+  DestStation: n => resolve(n.inputs.barcode)?.startsWith('BAT') ? 'target' : 'left',
+  Detect: () => ({cls: 'case', x:0.6, y:0.2, yaw:0, conf:0.9}),
+  CaptureFrame: () => ({rgb:'1280x720', depth:'1280x720', t: 0}),
+  ReadWrench: () => ({fx:0.2, fy:-0.1, fz:-3.4, tx:0, ty:0, tz:0}),
+};
+const BASE_DUR = {GoToStation:2.2, ParkDuringLeg:2.0, BaseMove:1.6, Navigate:2.0, SuctionPick:1.8, SuctionPlace:1.8, DetectObject:0.9, MoveEE:1.2, MoveJoints:1.2, Wait:1.0, ReadCode:0.7};
+// 가드가 울리는 시점 (진행률). 데모용 규칙.
+const GUARD_FIRE = {BEVInWindow:0.6, ForceOver:0.7, Sealed:0.5, Timeout:null, SafetyFloor:null, Reachable:null};
+
+async function runAction(n) {
+  mark(n.id, 'ts-running'); emit('node_enter', {node:n.type, id:n.id.slice(0,6)});
+  const base = BASE_DUR[n.type] ?? 0.5;
+  let stoppedBy = 'reached';
+  const guards = n.guards || [];
+  const r = await tick(dur(base), p => {
+    for (const g of guards) { const f = GUARD_FIRE[g.type]; if (f!=null && p >= f) { stoppedBy = g.type; return true; } }
+    return false;
+  });
+  if (r==='guard') emit('guard', {node:n.type, fired: stoppedBy});
+  let value = MOCK[n.type] ? MOCK[n.type](n) : {status:'ok', stopped_by: stoppedBy};
+  let result;
+  if (value && typeof value==='object' && 'status' in value) { result = value; if (!('stopped_by' in result)) result.stopped_by = stoppedBy; }
+  else result = {status:'ok', stopped_by: stoppedBy, value};
+  if (n.out) setPath(n.out, result.value !== undefined ? result.value : result);
+  renderBB();
+  mark(n.id, result.status==='ok' ? 'ts-done' : 'ts-fail');
+  emit('node_exit', {node:n.type, id:n.id.slice(0,6), status:result.status, stopped_by: result.stopped_by, ...(result.reason?{reason:result.reason}:{})});
+  return result.status==='ok';
+}
+function askGate(n) {
+  return new Promise(res => {
+    ui.gatePrompt.textContent = n.prompt; ui.gateBtns.innerHTML = '';
+    for (const a of n.allowed) { const b = document.createElement('button'); b.textContent = a; if (a==='continue') b.className='primary'; if (a==='abort') b.className='danger';
+      b.onclick = () => { ui.gate.hidden = true; res(a); }; ui.gateBtns.appendChild(b); }
+    ui.gate.hidden = false; setStatus('운영자 결정 대기: ' + n.prompt, 'run');
+  });
+}
+async function runNode(n) {
+  if (state.abort) throw new Aborted();
+  if (n.kind==='action') return runAction(n);
+  mark(n.id, 'ts-running'); emit('node_enter', {node:n.type, id:n.id.slice(0,6)});
+  let ok = true;
+  try {
+    switch (n.type) {
+      case 'Sequence': for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } break;
+      case 'Fallback': ok = false; for (const c of n.children) { if (await runNode(c)) { ok=true; break; } } break;
+      case 'Retry': ok = false; for (let i=0;i<n.n && !ok;i++) { ok = true; for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } if (!ok) emit('retry', {node:'Retry', attempt:i+1}); } break;
+      case 'Parallel': { const rs = await Promise.all(n.children.map(runNode)); ok = n.policy==='any' ? rs.some(Boolean) : rs.every(Boolean); break; }
+      case 'Loop': { let guard=0; while (evalExpr(n.while) && guard++ < 50) { for (const c of n.children) { if (!await runNode(c)) { ok=false; break; } } if (!ok) break; } break; }
+      case 'Condition': {
+        if (n.expr) ok = !!evalExpr(n.expr);
+        else { ok = true; for (const c of n.check) { emit('check', {cond:c.type, result:true}); } }
+        break; }
+      case 'Gate': { if (!state.bb.$autonomy_high) { const d = await askGate(n); setPath('gate', {choice:d}); renderBB(); emit('decision', {choice:d}); if (d==='abort') throw new Aborted(); ok = (d!=='hold'); } break; }
+      case 'Set': { setPath(n.target.replace(/^\$/,''), evalExpr(n.expr)); renderBB(); break; }
+    }
+  } finally { if (!state.abort) mark(n.id, ok ? 'ts-done' : 'ts-fail'); }
+  emit('node_exit', {node:n.type, id:n.id.slice(0,6), status: ok?'ok':'fail'});
+  return ok;
+}
+function renderBB() {
+  const rows = Object.entries(state.bb).filter(([k])=>!k.startsWith('$')).map(([k,v]) => {
+    const t = typeof v==='number' ? 'Number' : typeof v==='string' ? 'String' : Array.isArray(v) ? 'list' : v && 'contact_z' in v ? (('sealed' in v)?'PickResult':'PlaceResult') : v && 'release_above' in v ? 'ItemSpec' : v && 'conf' in v ? 'ObjectPose' : v && 'pitch' in v ? 'Pose' : v && 'choice' in v ? 'Decision' : 'dict';
+    return `<tr><td>$${k}</td><td class="t">${t}</td><td>${JSON.stringify(v)}</td></tr>`;
+  });
+  ui.bb.innerHTML = `<table><thead><tr><th>변수</th><th>타입</th><th>값</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+function resetBB() {
+  state.bb = { item:'case', stack:{src:3, tgt:0}, park:{x:0.3, y:0.2, z:1.1, roll:0, pitch:3.14, yaw:0}, params:{home_left:'[0.0, -0.4, 0.0, 1.2, 0.0, 0.6, 0.0]'} };
+  renderBB();
+}
+async function runProgram() {
+  if (state.running) return;
+  const prog = workspaceToProgram(ws);
+  if (!prog.main || !prog.main.length) { setStatus('프로그램 시작 블록 아래에 노드를 놓아 주세요.', 'fail'); return; }
+  state.running = true; state.abort = false; state.failOnce = document.getElementById('optFail').checked;
+  document.getElementById('btnRun').disabled = true; document.getElementById('btnStop').disabled = false;
+  ui.events.innerHTML = ''; clearMarks(); resetBB(); state.t0 = performance.now();
+  selectTab('paneEvents'); setStatus('실행 중', 'run');
+  emit('run_start', {program:'task3_item', robot:'mock'});
+  let ok = false;
+  try {
+    ok = true; for (const c of prog.main) { if (!await runNode(c)) { ok=false; break; } }
+    emit('run_end', {status: ok?'ok':'fail'}); setStatus(ok ? '끝: ok' : '끝: fail (트리가 실패를 위로 올렸다)', ok?'ok':'fail');
+  } catch (e) {
+    if (!(e instanceof Aborted)) { console.error(e); setStatus('오류: '+e.message, 'fail'); }
+    else {
+      emit('run_abort', {}); setStatus('중단됨 → on_abort 트리 실행', 'fail');
+      state.abort = false; ui.gate.hidden = true;
+      if (prog.on_abort) { for (const c of prog.on_abort) await runNode(c).catch(()=>{}); }
+      setStatus('중단됨. 복구 트리까지 끝.', 'fail');
+    }
+  } finally {
+    state.running = false; document.getElementById('btnRun').disabled = false; document.getElementById('btnStop').disabled = true; ui.gate.hidden = true;
+  }
+}
+
+/* ============================================================
+   7. 화면 묶기
+   ============================================================ */
+defineBlocks();
+const dark = () => document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+const ws = Blockly.inject('blocklyDiv', {
+  toolbox: toolbox(), theme: dark() ? Blockly.Themes.Dark : Blockly.Themes.Classic,
+  grid:{spacing:24, length:3, colour: dark() ? '#2a312d' : '#dde1de', snap:true}, zoom:{controls:true, wheel:true, startScale:0.85}, trashcan:true, renderer:'zelos',
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => ws.setTheme(dark() ? Blockly.Themes.Dark : Blockly.Themes.Classic));
+
+const yamlBox = document.getElementById('yaml');
+let suppress = false;
+function refreshYaml() { if (suppress) return; try { yamlBox.value = programToYaml(workspaceToProgram(ws), 'task3_item'); } catch (e) { yamlBox.value = '# ' + e.message; } }
+ws.addChangeListener(e => { if (e.isUiEvent) return; refreshYaml(); });
+
+function selectTab(id) {
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.pane===id));
+  for (const p of document.querySelectorAll('.pane')) p.hidden = (p.id!==id);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => selectTab(b.dataset.pane));
+
+document.getElementById('btnExample').onclick = () => { suppress = true; ws.clear(); loadProgram(ws, yamlToProgram(EXAMPLE_YAML)); suppress = false; refreshYaml(); clearMarks(); setStatus('Task 3 아이템 프로그램을 불러왔습니다. ▶ 실행을 누르세요.'); };
+document.getElementById('btnClear').onclick = () => { suppress = true; ws.clear(); loadProgram(ws, {main:[], on_abort:null}); suppress = false; refreshYaml(); setStatus('비웠습니다.'); };
+document.getElementById('btnApply').onclick = () => {
+  try { const prog = yamlToProgram(yamlBox.value); suppress = true; ws.clear(); loadProgram(ws, prog); suppress = false; refreshYaml(); setStatus('YAML을 블록으로 읽었습니다.', 'ok'); }
+  catch (e) { suppress = false; setStatus('YAML 오류: ' + e.message, 'fail'); }
+};
+document.getElementById('btnRun').onclick = runProgram;
+document.getElementById('btnStop').onclick = () => { state.abort = true; };
+document.getElementById('optSpeed').oninput = e => { state.speed = Number(e.target.value); };
+
+// 시작 상태: 예시를 올려 둔다
+document.getElementById('btnExample').click();
+resetBB();
+if (location.hash==='#autorun') { document.getElementById('optFail').checked = false; setTimeout(runProgram, 300); }   // 발표 중 바로 돌릴 때
+</script>
+
+</body>
+</html>
