@@ -39,7 +39,7 @@ ul { margin: 0; padding-left: 24px; } li { margin: 3px 0; }
 table { border-collapse: collapse; width: 100%; font-size: 16px; }
 th { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 9px; border-bottom: 1px solid var(--line); font-size: 13px; letter-spacing: .04em; }
 td { padding: 5px 9px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }
-td:first-child, th:first-child { white-space: nowrap; }
+td:first-child, th:first-child { white-space: nowrap; } table.wrap td:first-child { white-space: normal; }
 code { font-family: var(--mono); font-size: .92em; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 1px 5px; border-radius: 3px; }
 pre { margin: 0; font: 12.5px/1.4 var(--mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow: hidden; min-width: 0; }
 pre .k { color: var(--ctrl); } pre .a { color: var(--base); } pre .t { color: var(--task); } pre .c { color: var(--cond); } pre .v { color: var(--val); } pre .cm { color: var(--muted); } pre .kw { color: #ff9ab8; } pre .s { color: #f0c987; }
@@ -203,9 +203,56 @@ a { color: var(--accent); }
   </div>
 </section>
 
+<!-- 4b 블록 목록 -->
+<section class="slide">
+  <div class="eyebrow">4 · 지금 정의한 블록</div>
+  <h2>원자 블록은 기본 층에, 복합 블록은 과제 층에</h2>
+  <div class="cols" style="grid-template-columns:1.1fr 1fr;gap:20px">
+    <div class="box base" style="padding:12px 16px">
+      <span class="tag base">① 기본 · 원자 — 액추에이터 하나, 판단 없음, 1~5초</span>
+      <table style="margin-top:8px;font-size:13.5px">
+        <tr><th>파트</th><th>스킬 (입력)</th><th>출력</th></tr>
+        <tr><td>팔·몸통·머리</td><td><code>MoveJoints</code>(관절군, q, 속도)</td><td>stopped_by</td></tr>
+        <tr><td>팔</td><td><code>MoveEE</code>(Pose, straight, keep_xy)</td><td>stopped_by, 멈춘 Pose</td></tr>
+        <tr><td>섀시</td><td><code>BaseMove</code>(dx dy dyaw) · <code>Navigate</code>(지도 Pose)</td><td>stopped_by, 이동량 / 도착 Pose</td></tr>
+        <tr><td>석션</td><td><code>SuctionOn</code> · <code>SuctionOff</code>(blow)</td><td>ok</td></tr>
+        <tr><td>그리퍼</td><td><code>GripperMove</code>(폭, 힘)</td><td>stopped_by, 물체 감지</td></tr>
+        <tr><td>머리 카메라</td><td><code>CaptureFrame</code> · <code>Detect</code>(검출기, 클래스)</td><td>Frame / [ObjectPose]</td></tr>
+        <tr><td>손목 센서</td><td><code>ReadWrench</code> · <code>TareWrench</code></td><td>Wrench / 기준값</td></tr>
+        <tr><td>(계산)</td><td><code>OffsetPose</code>(Pose, dx dy dz dyaw) · <code>GraspPose</code>(ObjectPose, 접근, 잡는 점)</td><td>Pose</td></tr>
+        <tr><td>운영자</td><td><code>Gate</code>(질문, 허용 명령)</td><td>Decision</td></tr>
+        <tr><td>타이머</td><td><code>Wait</code>(timeout, 가드)</td><td>stopped_by</td></tr>
+        <tr><td><span class="tag cond">조건</span></td><td><code>ForceOver</code>(축, 문턱 N, relative) · <code>Sealed</code> · <code>Timeout</code>(초) · <code>Reachable</code>(Pose)</td><td>bool</td></tr>
+      </table>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;min-height:0">
+      <div class="box task" style="padding:12px 16px">
+        <span class="tag task">② 과제(LGES) · 원자 — 작업셀을 알아야 하는 것</span>
+        <table style="margin-top:8px;font-size:13.5px">
+          <tr><td>바코드 리더</td><td><code>ReadCode</code>(시간 창) → 문자열</td></tr>
+          <tr><td><span class="tag cond">조건</span></td><td><code>SafetyFloor</code>(z_min) · <code>BEVInWindow</code>(클래스, 창)</td></tr>
+        </table>
+      </div>
+      <div class="box task" style="padding:12px 16px">
+        <span class="tag task">② 과제(LGES) · 복합 — 원자 여럿을 묶음, 5~30초</span>
+        <table class="wrap" style="margin-top:8px;font-size:13px">
+          <tr><th style="width:42%">스킬</th><th>구성</th></tr>
+          <tr><td><code>DetectObject</code>(cls, n)</td><td>Detect n번 → 중앙값 → ObjectPose</td></tr>
+          <tr><td><code>ResolvePose</code>(det, item)</td><td>GraspPose + 품목별 OffsetPose (objects.yaml)</td></tr>
+          <tr><td><code>SuctionPick</code>(pose, expected_z)</td><td>위로 → MoveEE[ForceOver, SafetyFloor] → SuctionOn → Wait[Sealed] → 들기</td></tr>
+          <tr><td><code>SuctionPlace</code>(pose, expected_z,<br>release_above)</td><td>같은 뼈대 + early_contact 판정 + SuctionOff</td></tr>
+          <tr><td><code>GoToStation</code>(station)</td><td>stations.yaml 좌표 → Navigate, 없으면 BaseMove + 보정</td></tr>
+          <tr><td><code>ExpectedZ</code>(station, item,<br>layers)</td><td>열별 접촉 z 기록 → 다음 예상 z</td></tr>
+          <tr><td><code>ParkDuringLeg</code></td><td>Parallel[MoveEE(park), GoToStation]</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- 5 선 타입 -->
 <section class="slide">
-  <div class="eyebrow">4 · 블록 사이를 흐르는 값</div>
+  <div class="eyebrow">5 · 블록 사이를 흐르는 값</div>
   <h2>전부 pydantic 모델. base_link 기준, m / rad</h2>
   <div class="cols c2">
     <div class="box base">
@@ -243,7 +290,7 @@ a { color: var(--accent); }
 
 <!-- 6 잇는 법 -->
 <section class="slide">
-  <div class="eyebrow">5 · 잇는 법</div>
+  <div class="eyebrow">6 · 잇는 법</div>
   <h2>선 세 종류, 노드 여덟 개</h2>
   <div class="cols c2">
     <div style="display:flex;flex-direction:column;gap:14px">
@@ -273,7 +320,7 @@ a { color: var(--accent); }
 
 <!-- 7 프로그램 -->
 <section class="slide" style="padding-bottom:36px">
-  <div class="eyebrow">6 · 프로그램 = 트리 하나를 YAML로</div>
+  <div class="eyebrow">7 · 프로그램 = 트리 하나를 YAML로</div>
   <h2>물건 하나를 보고, 집고, 놓는다</h2>
   <div class="cols c12" style="gap:20px">
 <pre><span class="k">main</span>:
@@ -307,7 +354,7 @@ a { color: var(--accent); }
 
 <!-- 8 과제가 블록을 더하는 법 -->
 <section class="slide">
-  <div class="eyebrow">7 · 과제 층이 블록을 더하는 법</div>
+  <div class="eyebrow">8 · 과제 층이 블록을 더하는 법</div>
   <h2>원자 블록을 더하거나, 묶어서 복합 블록을 만든다</h2>
   <div class="cols c11">
 <pre><span class="cm"># tasks/lges/manip/suction_pick.py  — 복합 스킬도 같은 Skill 계약</span>
@@ -359,7 +406,7 @@ a { color: var(--accent); }
 
 <!-- 9 데모 -->
 <section class="slide" style="padding-bottom:36px">
-  <div class="eyebrow">8 · 데모 (가짜 로봇)</div>
+  <div class="eyebrow">9 · 데모 (가짜 로봇)</div>
   <h2 style="display:flex;justify-content:space-between;align-items:baseline">YAML을 그리고, 실행하면 노드가 칠해지고, 이벤트가 쌓인다 <a href="task_studio_graph.html" target="_blank" style="font-size:16px;font-weight:500">새 창에서 열기 ↗</a></h2>
   <div style="flex:1;min-height:0"><iframe src="task_studio_graph.html#flow" title="Task Studio 그래프 뷰어"></iframe></div>
   <p class="muted small">예시를 "Task 3 아이템 하나"로 바꾸면 실제 과제 크기가 된다. "첫 검출 실패"를 켜면 DetectObject가 한 번 실패해 Fallback → Gate(운영자 버튼)로 넘어간다. 이벤트 탭이 실행기가 쓰는 JSONL 한 줄씩.</p>

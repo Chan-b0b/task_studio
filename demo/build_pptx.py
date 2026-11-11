@@ -326,8 +326,53 @@ bul = [P([R('등록과 노출', c='muted', b=True, sz=12)], sz=12, after=4)] + [
 add(s, text(RX, by, RW, CY + CH - by, bul, pad=(0.16, 0.12, 0.16, 0.1), fill=None, line='line', radius=0.08, name='box'))
 slides.append(s)
 
+# 4b 지금 정의한 블록 -----------------------------------------------------------
+s = chrome('4 · 지금 정의한 블록', '원자 블록은 기본 층에, 복합 블록은 과제 층에',
+           '원자 = 액추에이터 하나, 판단 없음, 1~5초. 복합 = 원자 여럿을 묶음, 5~30초, 전부 과제 층. 기존 원자+조건으로 적을 수 있으면 새 블록을 만들지 않는다.')
+LW = 6.5; RX = ML + LW + 0.3; RW = CW - LW - 0.3
+base_rows = [
+    ['파트', '스킬 (입력)', '출력'],
+    ['팔·몸통·머리', '`MoveJoints`(관절군, q, 속도)', 'stopped_by'],
+    ['팔', '`MoveEE`(Pose, straight, keep_xy)', 'stopped_by, 멈춘 Pose'],
+    ['섀시', '`BaseMove`(dx dy dyaw) · `Navigate`(지도 Pose)', 'stopped_by, 이동량 / 도착 Pose'],
+    ['석션', '`SuctionOn` · `SuctionOff`(blow)', 'ok'],
+    ['그리퍼', '`GripperMove`(폭, 힘)', 'stopped_by, 물체 감지'],
+    ['머리 카메라', '`CaptureFrame` · `Detect`(검출기, 클래스)', 'Frame / [ObjectPose]'],
+    ['손목 센서', '`ReadWrench` · `TareWrench`', 'Wrench / 기준값'],
+    ['(계산)', '`OffsetPose`(Pose, dx dy dz dyaw) · `GraspPose`(ObjectPose, 접근, 잡는 점)', 'Pose'],
+    ['운영자', '`Gate`(질문, 허용 명령)', 'Decision'],
+    ['타이머', '`Wait`(timeout, 가드)', 'stopped_by'],
+    [[R('조건', c='cond', b=True)], '`ForceOver`(축, 문턱 N, relative) · `Sealed` · `Timeout`(초) · `Reachable`(Pose)', 'bool'],
+]
+tb = table(ML + 0.16, CY + 0.5, LW - 0.32, [1.4, 3.25, 1.55], base_rows, sz=11)
+add(s, rect(ML, CY, LW, tb['h'] + 0.7, fill=None, line='base', radius=0.1, lw=1.5))
+add(s, text(ML + 0.16, CY + 0.12, LW - 0.32, 0.32, P([R('① 기본 · 원자 — 액추에이터 하나, 판단 없음, 1~5초', c='base', b=True, sz=10.5)], sz=10.5), pad=(0, 0.02, 0, 0)))
+add(s, tb)
+t1 = table(RX + 0.16, CY + 0.42, RW - 0.32, [1.0, 3.5], [
+    ['바코드 리더', '`ReadCode`(시간 창) → 문자열'],
+    [[R('조건', c='cond', b=True)], '`SafetyFloor`(z_min) · `BEVInWindow`(클래스, 창)'],
+], header=False, sz=11)
+add(s, rect(RX, CY, RW, t1['h'] + 0.62, fill=None, line='task', radius=0.1, lw=1.5))
+add(s, text(RX + 0.16, CY + 0.12, RW - 0.32, 0.32, P([R('② 과제(LGES) · 원자 — 작업셀을 알아야 하는 것', c='task', b=True, sz=10.5)], sz=10.5), pad=(0, 0.02, 0, 0)))
+add(s, t1)
+y2 = CY + t1['h'] + 0.62 + 0.14
+t2 = table(RX + 0.16, y2 + 0.42, RW - 0.32, [1.9, 2.6], [
+    ['스킬', '구성'],
+    ['`DetectObject`(cls, n)', 'Detect n번 → 중앙값 → ObjectPose'],
+    ['`ResolvePose`(det, item)', 'GraspPose + 품목별 OffsetPose (objects.yaml)'],
+    ['`SuctionPick`(pose, expected_z)', '위로 → MoveEE[ForceOver, SafetyFloor] → SuctionOn → Wait[Sealed] → 들기'],
+    ['`SuctionPlace`(pose, expected_z, release_above)', '같은 뼈대 + early_contact 판정 + SuctionOff'],
+    ['`GoToStation`(station)', 'stations.yaml 좌표 → Navigate, 없으면 BaseMove + 보정'],
+    ['`ExpectedZ`(station, item, layers)', '열별 접촉 z 기록 → 다음 예상 z'],
+    ['`ParkDuringLeg`', 'Parallel[MoveEE(park), GoToStation]'],
+], sz=11)
+add(s, rect(RX, y2, RW, t2['h'] + 0.58, fill=None, line='task', radius=0.1, lw=1.5))
+add(s, text(RX + 0.16, y2 + 0.12, RW - 0.32, 0.32, P([R('② 과제(LGES) · 복합 — 원자 여럿을 묶음, 5~30초', c='task', b=True, sz=10.5)], sz=10.5), pad=(0, 0.02, 0, 0)))
+add(s, t2)
+slides.append(s)
+
 # 5 값 타입 ------------------------------------------------------------------
-s = chrome('4 · 블록 사이를 흐르는 값', '전부 pydantic 모델. base_link 기준, m / rad',
+s = chrome('5 · 블록 사이를 흐르는 값', '전부 pydantic 모델. base_link 기준, m / rad',
            '타입은 그것을 출력하는 블록과 같은 층에 둔다. 과제 타입은 기본 타입을 상속한다.')
 LW = 6.5; RX = ML + LW + 0.3; RW = CW - LW - 0.3
 base_rows = [
@@ -366,7 +411,7 @@ add(s, stack(RX, ry, RW, [
 slides.append(s)
 
 # 6 잇는 법 ------------------------------------------------------------------
-s = chrome('5 · 잇는 법', '선 세 종류, 노드 여덟 개',
+s = chrome('6 · 잇는 법', '선 세 종류, 노드 여덟 개',
            '실패 처리는 블록 안이 아니라 트리 모양에 있다. 식은 산술·비교·논리만. 프로그램 = main + on_abort.')
 LW = 5.6; RX = ML + LW + 0.3; RW = CW - LW - 0.3
 add(s, stack(ML, CY, LW, [
@@ -394,7 +439,7 @@ add(s, table(RX, CY, RW, [1.75, 2.45, 1.5], [
 slides.append(s)
 
 # 7 프로그램 YAML --------------------------------------------------------------
-s = chrome('6 · 프로그램 = 트리 하나를 YAML로', '물건 하나를 보고, 집고, 놓는다',
+s = chrome('7 · 프로그램 = 트리 하나를 YAML로', '물건 하나를 보고, 집고, 놓는다',
            '같은 YAML을 다음 장에서 그래프로 그린다. 입력 $item, $drop, $park, $params는 호출하는 쪽이 준다.')
 LW = 7.3; RX = ML + LW + 0.3; RW = CW - LW - 0.3
 add(s, code(ML, CY, LW, CH, 4))
@@ -408,7 +453,7 @@ add(s, stack(RX, CY, RW, [
 slides.append(s)
 
 # 8 프로그램 그래프 -------------------------------------------------------------
-s = chrome('6 · 프로그램 = 트리 하나를 YAML로', '같은 YAML을 그래프로 그리면',
+s = chrome('7 · 프로그램 = 트리 하나를 YAML로', '같은 YAML을 그래프로 그리면',
            'demo/task_studio_graph.html 이 YAML에서 그린 화면. 제어 노드는 점선 상자, 블록은 카드, 값선은 타입별 색, 가드는 카드 아래 육각형.')
 im = Image.open(os.path.join(DEMO, 'img', 'graph_embed_crop.png'))
 gw = CW; gh = gw * im.size[1] / im.size[0]
@@ -418,7 +463,7 @@ add(s, text(ML, cy2, CW, CY + CH - cy2, P([R('제어 노드', c='ctrl', b=True),
 slides.append(s)
 
 # 9 과제 층이 블록을 더하는 법 ---------------------------------------------------
-s = chrome('7 · 과제 층이 블록을 더하는 법', '원자 블록을 더하거나, 묶어서 복합 블록을 만든다',
+s = chrome('8 · 과제 층이 블록을 더하는 법', '원자 블록을 더하거나, 묶어서 복합 블록을 만든다',
            '복합 블록도 같은 Skill 계약. 파이썬(Skill.call) 또는 YAML 매크로. 기본 층은 원자 블록까지만.')
 LW = 7.0; RX = ML + LW + 0.3; RW = CW - LW - 0.3
 add(s, code(ML, CY, LW, CH, 5))
@@ -439,7 +484,7 @@ add(s, stack(RX, CY, RW, [
 slides.append(s)
 
 # 10 데모 ---------------------------------------------------------------------
-s = chrome('8 · 데모 (가짜 로봇)', 'YAML을 그리고, 실행하면 노드가 칠해지고, 이벤트가 쌓인다',
+s = chrome('9 · 데모 (가짜 로봇)', 'YAML을 그리고, 실행하면 노드가 칠해지고, 이벤트가 쌓인다',
            '발표 때는 demo/task_studio_graph.html 을 브라우저로 연다. 예시 전환, 첫 검출 실패 → Fallback → Gate, 이벤트 JSONL.')
 im = Image.open(os.path.join(DEMO, 'img', 'graph_full.png'))
 gh = CH - 0.05; gw = gh * im.size[0] / im.size[1]
