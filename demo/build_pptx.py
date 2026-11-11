@@ -74,8 +74,11 @@ def P(runs, sz=13, ls=1.25, after=0, bullet=False, align='l', before=0):
 
 def parse_pre(idx):
     """Return paragraphs for the idx-th <pre> block of the HTML deck (syntax colored)."""
-    pres = re.findall(r'<pre>(.*?)</pre>', HTML, re.S)
-    src = pres[idx]
+    if isinstance(idx, str):
+        src = idx
+    else:
+        pres = re.findall(r'<pre>(.*?)</pre>', HTML, re.S)
+        src = pres[idx]
     paras = []
     for line in src.split('\n'):
         plain = re.sub(r'<[^>]+>', '', line)
@@ -224,6 +227,66 @@ def stack(x, y, w, items, gap=0.16):
         y += el['h'] + gap
     return out
 
+# ---------- pptx-only code blocks (HTML deck keeps its own) ----------
+K = lambda t: f'<span class="kw">{t}</span>'
+S = lambda t: f'<span class="s">{t}</span>'
+C = lambda t: f'<span class="cm">{t}</span>'
+CODE_WAIT = f"""{C('# task_studio/core/skill.py — 모든 동작이 쓰는 공통 루프. 움직이는 법은 파트가, 지켜보는 법은 스킬이.')}
+{K('class')} Skill:
+    ...
+    {K('def')} wait_guarded(self, ctx, inp, done, stop, pose=None) -&gt; ActionResult:
+        t0 = now()
+        {K('while not')} done():                        {C('# 파트가 끝났다고 할 때까지')}
+            ctx.check()                          {C('# 선점: 일시정지 / E-stop → Aborted 예외')}
+            {K('for')} g {K('in')} inp.guards:                 {C('# 가드: 매 tick 묻는다')}
+                {K('if')} g.check(ctx):
+                    stop()
+                    {K('return')} ActionResult(status={S('"ok"')}, stopped_by=g.name,
+                                        pose_at_stop=pose {K('and')} pose())
+            {K('if')} now() - t0 &gt; inp.timeout:
+                stop()
+                {K('return')} ActionResult(status={S('"fail"')}, reason={S('"timeout"')},
+                                    stopped_by={S('"timeout"')})
+            sleep(TICK)
+        {K('return')} ActionResult(status={S('"ok"')}, stopped_by={S('"reached"')},
+                            pose_at_stop=pose {K('and')} pose())
+
+{C('# 쓰는 쪽 (동작 블록의 run 안)')}
+arm = ctx.robot.arm(inp.arm)                     {C('# 파트를 고른다')}
+arm.start(inp.pose, speed=inp.speed)             {C('# 파트의 일: 시작만 하고 바로 리턴 (비블로킹)')}
+r = self.wait_guarded(ctx, inp, done=arm.done, stop=arm.stop, pose=arm.pose)"""
+
+CODE_MOVE_EE = f"""{C('# task_studio/skills/motion/move_ee.py')}
+{K('class')} MoveEE(Skill):
+    name = {S('"MoveEE"')}
+    requires = frozenset({{{S('"left_arm"')}}})   {C('# inp.arm 에 따라 정하는 건 숙제')}
+
+    {C('# guards, timeout 은 ActionInput 에서 상속')}
+    {K('class')} Input(ActionInput):
+        arm: Literal[{S('"left"')}, {S('"right"')}] = {S('"left"')}
+        pose: Pose
+        straight: bool = True       {C('# 직선, 아니면 관절 공간 호')}
+        keep_xy: bool = False       {C('# 수직 전용')}
+        speed: float = param({S('"arm.speed"')})   {C('# params.yaml')}
+
+    {K('class')} Output(ActionResult):
+        error_m: float = 0.0
+
+    {K('def')} run(self, ctx, inp):
+        arm = ctx.robot.arm(inp.arm)              {C('# 파트: 어느 팔인지')}
+        {K('if not')} arm.reachable(inp.pose):
+            {K('return')} self.Output(status={S('"fail"')},
+                reason={S('"unreachable"')}, stopped_by={S('"unreachable"')})
+        {C('# 파트의 일: 움직이기 시작 (비블로킹)')}
+        arm.start(inp.pose, straight=inp.straight,
+                  keep_xy=inp.keep_xy, speed=inp.speed)
+        {C('# 스킬의 일: 가드 · ctx.check · timeout (앞 장 루프)')}
+        r = self.wait_guarded(ctx, inp, done=arm.done,
+                              stop=arm.stop, pose=arm.pose)
+        ctx.emit({S('"move_ee_end"')}, stopped_by=r.stopped_by)
+        {K('return')} self.Output(**r.dict(),
+                           error_m=arm.error_to(inp.pose))"""
+
 # ---------- slide chrome ----------
 ML, MR, MT = 0.75, 0.75, 0.5
 CW = SLIDE_W - ML - MR
@@ -290,10 +353,10 @@ add(s, stack(RX, CY, RW, [
 slides.append(s)
 
 # 3 동작의 공통 계약 ----------------------------------------------------------
-s = chrome('2 · 동작의 공통 계약', '모든 동작은 guards·timeout을 받고 stopped_by를 돌려준다',
+s = chrome('2 · 동작의 공통 계약', '움직이는 법은 파트가, 지켜보는 법은 스킬이. 결과는 stopped_by',
            '가드가 울리는 건 실패가 아니다. ctx.check()는 선점(운영자·안전), 가드는 그 동작을 멈추는 조건.')
-LW = 6.8; RX = ML + LW + 0.3; RW = CW - LW - 0.3
-add(s, code(ML, CY, LW, CH, 1))
+LW = 6.95; RX = ML + LW + 0.3; RW = CW - LW - 0.3
+add(s, code(ML, CY, LW, CH, CODE_WAIT))
 add(s, stack(RX, CY, RW, [
     lambda x, y, w: table(x, y, w, [1.35, 2.6, 0.75], [
         ['`stopped_by`', '뜻', 'status'],
@@ -312,8 +375,8 @@ slides.append(s)
 # 4 블록 하나 짜는 법 ---------------------------------------------------------
 s = chrome('3 · 블록 하나 짜는 법', '동작 하나 25줄, 조건 하나 10줄',
            'Skill 상속이 곧 레지스트리 등록. 로더가 Input(**args)로 검증하므로 틀린 필드는 로드 시점에 터진다.')
-LW = 6.3; RX = ML + LW + 0.3; RW = CW - LW - 0.3
-add(s, code(ML, CY, LW, CH, 2))
+LW = 6.5; RX = ML + LW + 0.3; RW = CW - LW - 0.3
+add(s, code(ML, CY, LW, CH, CODE_MOVE_EE))
 codeh = measure_text_in(parse_pre(3), RW, (0.16, 0.12, 0.12, 0.12))
 add(s, code(RX, CY, RW, codeh, 3))
 by = CY + codeh + 0.2
