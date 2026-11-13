@@ -1,0 +1,10 @@
+# ① 기본 — 로봇 한계만. 과제(tasks/<이름>/params.yaml)가 덮고, 프로그램이 주면 그 값이 이긴다.
+tick_s: 0.01                # 긴 동작의 한 tick (가드·선점 검사 주기)
+ee_speed: 0.25              # m/s, MoveEE 기본
+chassis_speed: 0.10         # m/s, BaseMove 기본
+chassis_manual_speed: 0.30  # m/s, 운영자가 시킨 섀시 이동
+chassis_settle_s: 0.0       # 섀시가 멈춘 뒤 기다리는 시간
+tool_length: 0.0            # EE → 툴 끝 (GraspPose)
+force_abort_n: 40.0         # 이 힘을 넘으면 어떤 동작이든 중단(aborted)
+loop_max: 1000              # Loop 한 개가 돌 수 있는 최대 횟수
+autonomy: ask               # full = autonomy: low 게이트는 자동 통과

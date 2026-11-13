@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Studio 편집기</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --box:#eef1f5; --line:#b8c0cc; --ink:#1b2430; --dim:#667085;
+  --card:#ffffff; --cardb:#cfd6e0;
+  --go:#18794e; --gobg:#e3f4ea; --again:#9a6700; --againbg:#fbf0d0; --stop:#b42318; --stopbg:#fde7e4;
+  --tag:#5b3fc4; --tagbg:#ece8fb; --hl:#f5b400; --sel:#2563eb;
+  --act:#3d6fd9; --cond:#8a5cf6; --gate:#d97706; --calc:#7b8794;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12161c; --panel:#1a2029; --box:#202834; --line:#465265; --ink:#e6eaf0; --dim:#98a2b3;
+    --card:#232c39; --cardb:#3a4658;
+    --go:#5fd39a; --gobg:#173527; --again:#f0c35a; --againbg:#3a2f12; --stop:#ff8f85; --stopbg:#45201c;
+    --tag:#b9a8ff; --tagbg:#2c2550; --hl:#f5b400; --sel:#7fb0ff;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Noto Sans KR","Malgun Gothic",system-ui,sans-serif;display:grid;grid-template:auto 1fr / 230px 1fr 390px;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{padding:4px 10px;border-radius:6px;border:1px solid var(--cardb);background:var(--panel);cursor:pointer}
+button:hover{border-color:var(--sel)}
+input,select,textarea{background:var(--panel);border:1px solid var(--cardb);border-radius:5px;padding:3px 6px;min-width:0}
+#top{grid-column:1/4;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+#top h1{font-size:16px;margin:0 8px 0 0}
+#top .hint{color:var(--dim);font-size:12.5px;margin-left:auto}
+#pal,#right{overflow:auto;background:var(--panel)}
+#pal{border-right:1px solid var(--line);padding:10px}
+#right{border-left:1px solid var(--line);display:flex;flex-direction:column}
+#canvas{overflow:auto;padding:18px 24px 120px;position:relative}
+h2{font-size:12.5px;margin:12px 0 5px;color:var(--dim);font-weight:650}
+h2:first-child{margin-top:0}
+.pi{display:flex;justify-content:space-between;gap:6px;padding:3px 8px;margin:3px 0;border:1px solid var(--cardb);border-left:4px solid var(--act);border-radius:6px;background:var(--card);cursor:grab;font-size:13px}
+.pi span{color:var(--dim);font-size:11px}
+.pi.cb{border-left-width:1px;border-radius:12px;cursor:grab}
+.pi.cb.e-cont{color:var(--go);background:var(--gobg);border-color:var(--go)}
+.pi.cb.e-stop{color:var(--stop);background:var(--stopbg);border-color:var(--stop)}
+.pi.cb span{color:inherit;opacity:.8}
+.pi.on{outline:3px solid var(--sel);outline-offset:1px}
+.dragcond .card.mv,.dragcond .box.Group{outline:2px dashed var(--sel);outline-offset:1px}
+.row.over>.card,.box.over{outline:4px solid var(--sel) !important;outline-offset:1px}
+.glane{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:2px 0 4px}
+.glane .exit::before{display:none}
+.pi.node{border-left-color:var(--again)} .pi.cond{border-left-color:var(--cond)} .pi.gate{border-left-color:var(--gate)} .pi.calc{border-left-color:var(--calc)} .pi.code{border:1px dashed var(--ink);border-left:4px solid var(--ink)}
+
+/* ---- 본류 ---- */
+.stream{display:flex;flex-direction:column;position:relative;min-width:max-content}
+.stream::before{content:"";position:absolute;left:119px;top:0;bottom:0;width:2px;background:var(--line)}
+.stream>*{position:relative}
+.row{display:flex;align-items:flex-start}
+.card{width:240px;flex:none;background:var(--card);border:1px solid var(--cardb);border-left:4px solid var(--act);border-radius:8px;padding:6px 9px;cursor:pointer}
+.card.cond{border-left-color:var(--cond);border-radius:16px}
+.card.gate{border-left-color:var(--gate)}
+.card.calc{border-left-color:var(--calc)}
+.card.code{border:1px dashed var(--ink);border-left:4px solid var(--ink)}
+.card .nm{font-weight:650;font-size:13.5px}
+.card .pt{float:right;font-size:11px;color:var(--dim);margin-left:6px}
+.card .nt{font-size:12.5px;color:var(--dim)}
+.card .ar{font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--tagbg);color:var(--tag);border-radius:4px;padding:0 5px;outline:1px solid var(--tag);display:inline-block;margin-top:3px}
+.sel>.card,.box.sel,.cdef.sel{outline:3px solid var(--sel);outline-offset:1px}
+
+/* ---- 끼워 넣는 자리 ---- */
+.slot{height:16px;cursor:pointer;position:relative}
+.slot i{position:absolute;left:111px;top:-1px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:1px solid var(--line);color:var(--dim);font:700 13px/16px system-ui;text-align:center;font-style:normal;opacity:.0;z-index:2}
+.slot:hover i,body.dragging .slot i{opacity:1}
+.slot.on i,.slot.over i{opacity:1;background:var(--sel);border-color:var(--sel);color:#fff}
+.slot.empty{height:30px}
+.slot.empty i{opacity:1;top:6px}
+.chain{display:flex;align-items:flex-start}
+.chain>.slot{height:auto;width:22px;flex:none;align-self:stretch;min-height:22px}
+.chain>.slot i{left:2px;top:2px;opacity:1;border-color:transparent;background:none;color:var(--line)}
+.chain>.slot:hover i,body.dragging .chain>.slot i{border-color:var(--line);background:var(--bg);color:var(--dim)}
+.chain>.slot.on i,.chain>.slot.over i{background:var(--sel);border-color:var(--sel);color:#fff}
+.chain .card{width:190px}
+
+/* ---- 갈림 ---- */
+.exits{display:flex;flex-direction:column;gap:5px;padding-top:4px}
+.exit{display:flex;align-items:flex-start}
+.exit::before{content:"";width:16px;height:2px;background:var(--line);margin-top:11px;flex:none}
+.chip{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:12px;border-radius:12px;padding:2px 9px 2px 7px;border:1px solid;white-space:nowrap;cursor:pointer}
+.chip i{width:8px;height:8px;flex:none;display:inline-block;background:currentColor;border-radius:50%}
+.chip i.cond{transform:rotate(45deg);border-radius:0}
+.chip i.choice{border-radius:1px}
+.e-cont>.chip{color:var(--go);background:var(--gobg);border-color:var(--go)}
+.e-again>.chip{color:var(--again);background:var(--againbg);border-color:var(--again)}
+.e-stop>.chip,.e-none>.chip{color:var(--stop);background:var(--stopbg);border-color:var(--stop)}
+.end{flex:none;font-size:12px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap;margin-top:1px;cursor:pointer;border:1px solid transparent}
+.end:hover{border-color:currentColor}
+.end.cont{color:var(--go)} .end.again{color:var(--again);background:var(--againbg)} .end.stop{color:#fff;background:var(--stop)}
+.end.fixed{cursor:default}.end.fixed:hover{border-color:transparent}
+
+/* ---- 묶음 ---- */
+.box{background:var(--box);border:1px solid var(--cardb);border-radius:10px;padding:8px 12px 4px;min-width:264px}
+.box>.hd{font-size:12.5px;font-weight:650;margin-bottom:2px;display:flex;gap:8px;align-items:baseline;cursor:pointer}
+.box>.hd span{font-weight:400;color:var(--dim)}
+.box.Loop{border-left:4px solid var(--again)} .box.Group{border-left:4px solid var(--act)} .box.Parallel{border-left:4px solid var(--go)}
+.cols{display:flex;gap:10px;align-items:flex-start;margin:6px 0 8px}
+.col{background:var(--panel);border:1px dashed var(--cardb);border-radius:8px;padding:4px 8px}
+.col .stream::before{left:95px}
+.col .card{width:192px}
+.col .slot i{left:87px}
+
+.wrap{display:flex;flex-direction:column}
+.lanes{display:flex;gap:10px;align-items:flex-start;margin-top:8px}
+.lane{background:var(--box);border:1px solid var(--cardb);border-radius:10px;padding:8px 10px 10px}
+.lane .lh{align-items:center;gap:6px;margin-bottom:4px}
+.lane .lh::before{display:none}
+.lane>.end{display:inline-block;margin:2px 0 0 84px}
+.lane.fold{padding:8px 4px}
+.lane.fold .lh{flex-direction:column}
+.lane.fold .chip{writing-mode:vertical-rl;padding:8px 2px}
+.fb{padding:0 6px;font-size:12px}
+.sig{font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;font-weight:400;color:var(--dim)}
+.callrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 4px}
+.callrow .ar{font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--dim)}
+.callrow .tag{margin-top:0}
+.srow{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;margin:3px 0}
+.srow input,.srow select{width:100%}
+/* ---- 오른쪽 ---- */
+#insp{padding:10px 12px;overflow:auto;flex:1}
+.f{display:grid;grid-template-columns:96px 1fr;gap:4px 8px;align-items:center;margin:4px 0}
+.f label{font-size:12.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis}
+.f input,.f select{width:100%}
+.rowb{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.rowb input{flex:1}
+.x{padding:1px 7px;color:var(--stop)}
+.cdef{border:1px solid var(--cardb);border-radius:8px;padding:8px;margin-top:8px}
+.cdef .f{grid-template-columns:60px 1fr}
+.cdef .chain{flex-wrap:wrap;row-gap:4px;margin-top:6px;padding:4px;border:1px dashed var(--cardb);border-radius:6px;align-items:center}
+.cdef .chain .card{width:150px}
+.cdef small{color:var(--dim)}
+.cdef.flash{animation:fl 1.2s}
+@keyframes fl{0%,60%{background:var(--againbg)}100%{background:none}}
+.muted{color:var(--dim);font-size:12.5px}
+#yaml{display:none;position:absolute;right:0;top:0;bottom:0;width:min(560px,100%);background:var(--panel);border-left:1px solid var(--line);padding:10px 12px;overflow:auto;z-index:8;box-shadow:-6px 0 18px rgba(0,0,0,.15)}
+#yaml.on{display:block}
+#yaml pre{font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;margin:8px 0 0;white-space:pre}
+#mid{position:relative;overflow:hidden;display:flex}
+#mid>#canvas{flex:1}
+#err{color:var(--stop);font-size:12px}
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Task Studio 편집기</h1>
+  <button id="undo">↶ 되돌리기</button>
+  <button id="new">새로 만들기</button>
+  <button id="ex">예시</button>
+  <button id="ybtn">YAML 보기</button>
+  <button id="ydl">YAML 내려받기</button>
+  <span id="err"></span>
+  <span class="hint">블록을 끌어다 ＋ 에 놓는다 (또는 ＋ 를 누르고 블록을 누른다) · 카드를 누르면 오른쪽에서 값을 고친다 · 조건 블록은 왼쪽에서 만들고 동작 카드나 모듈에 갖다 대면 붙는다 · Del 지우기 · Ctrl+Z 되돌리기</span>
+</div>
+<div id="pal"></div>
+<div id="mid"><div id="canvas"></div><div id="yaml"><b>YAML</b> <span class="muted">— 그림을 고치면 같이 바뀐다</span><pre id="ytext"></pre></div></div>
+<div id="right"><div id="insp"></div></div>
+
+<script>
+window.onerror=(m,s,l)=>{document.getElementById('err').textContent='오류: '+m+' ('+l+')'};
+// ================= 블록 목록 =================
+// in: 입력 이름들, mv: 시간이 걸리는 동작, cls: 카드 모양. 조건 블록은 노드가 아닌 모든 블록과 모듈에 꽂는다 (canGuard)
+const CAT={
+ '노드':{
+  If:{cls:'cond',kind:'node'}, Gate:{cls:'gate',kind:'node',pt:'운영자'}, Loop:{kind:'node'}, Parallel:{kind:'node'},
+  Set:{cls:'calc',kind:'node'}, Group:{kind:'node',label:'묶음'}},
+ '기본 동작':{
+  MoveJoints:{pt:'팔·몸통·머리',in:['group','q','speed'],mv:1}, MoveEE:{pt:'팔',in:['pose','straight','keep_xy','speed'],mv:1},
+  BaseMove:{pt:'섀시',in:['dx','dy','dyaw','speed'],mv:1}, Navigate:{pt:'섀시',in:['goal','speed'],mv:1},
+  SuctionOn:{pt:'석션'}, SuctionOff:{pt:'석션',in:['blow']}, GripperMove:{pt:'그리퍼',in:['width','force','speed'],mv:1},
+  CaptureFrame:{pt:'카메라',in:['camera']}, Detect:{pt:'카메라',in:['frame','detector','cls']},
+  ReadWrench:{pt:'손목 센서',in:['arm']}, TareWrench:{pt:'손목 센서',in:['arm','samples']},
+  OffsetPose:{cls:'calc',in:['pose','dx','dy','dz','dyaw']}, GraspPose:{cls:'calc',in:['det','approach','point']},
+  Wait:{pt:'타이머',in:['s'],mv:1}, OperatorDrive:{cls:'code',pt:'운영자·섀시',in:['prompt']}},
+ // 과제 동작은 여기 적지 않는다. 과제 패키지의 블록 목록(Registry.catalog())에서 받아 올 자리
+};
+const CHECKS={ForceOver:'threshold: 10',Sealed:'',Timeout:'',Reachable:'pose: $target'};
+const DEF={};Object.values(CAT).forEach(g=>Object.entries(g).forEach(([k,v])=>DEF[k]=v));
+// 칸에 적는 타입 = 값이 무엇인가에 붙인 이름 (task_studio/types.yaml. 과제 타입은 과제의 types.yaml 에서 온다). number/text/list 는 직접 적지 않는다
+const TYPES=['Height','Distance','Angle','Count','Seconds','Force','Torque','Speed','Ratio','bool','PartName','ObjectClass','StationName','Message','Option','StopReason',
+  'JointAngles','Detections','Pose','ObjectPose','Wrench','Frame','JointState','Station','Decision','MoveResult'];
+const typeSel=(s)=>{const t=el('select');TYPES.forEach(k=>t.append(new Option(k,k)));if(s.type&&!TYPES.includes(s.type))t.append(new Option(s.type+' (옛 이름)',s.type));t.value=s.type||'';return t};
+const END={cont:'↓ 본류 계속',stop:'■ 멈춤',again:'↺ 상자 처음으로'};
+
+// ================= 상태 =================
+let S={main:[],conds:[]}, sel=null, slotOn=null, drag=null, hist=[];
+const br=(label,end,body)=>({label,end:end||'cont',body:body||[]});
+function make(type,o){
+  const n={type,nt:'',args:{},out:'',guards:[]};
+  if(type==='If')n.cond='',n.br=[br('예'),br('아니오')];
+  if(type==='Gate')n.br=[br('계속'),br('그만','stop')];
+  if(type==='Loop')n.n='',n.body=[];
+  if(type==='Group')n.name='묶음',n.body=[],n.ins=[],n.outs=[];
+  if(type==='Parallel')n.cols=[[],[]];
+  if(type==='Set')n.text='';
+  return Object.assign(n,o||{})}
+function eachList(fn){ // 모든 목록을 돈다
+  const go=l=>{fn(l);l.forEach(n=>{(n.br||[]).forEach(b=>go(b.body));if(n.body)go(n.body);(n.cols||[]).forEach(go)})};
+  go(S.main);S.conds.forEach(c=>go(c.body))}
+function eachNode(fn){eachList(l=>l.forEach(fn))}
+function inside(node,list){let hit=false;const go=l=>{if(l===list)hit=true;l.forEach(n=>{(n.br||[]).forEach(b=>go(b.body));if(n.body)go(n.body);(n.cols||[]).forEach(go)})};
+  (node.br||[]).forEach(b=>go(b.body));if(node.body)go(node.body);(node.cols||[]).forEach(go);return hit}
+function snap(){hist.push(JSON.stringify(S));if(hist.length>200)hist.shift()}
+function save(){try{localStorage.setItem('ts_editor',JSON.stringify(S))}catch(e){}}
+function edit(fn){snap();fn();save();draw()}
+function undo(){if(!hist.length)return;S=JSON.parse(hist.pop());sel=null;slotOn=null;save();draw()}
+function removeNode(n){eachList(l=>{const i=l.indexOf(n);if(i>=0)l.splice(i,1)})}
+function insertAt(list,i,n){list.splice(i,0,n);sel=n;slotOn={list,i:i+1}}
+
+// ================= 그리기 =================
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function slot(list,i){
+  const s=el('div','slot'+(list.length===0?' empty':'')+(slotOn&&slotOn.list===list&&slotOn.i===i?' on':''),'<i>+</i>');
+  s.onclick=e=>{e.stopPropagation();slotOn=(slotOn&&slotOn.list===list&&slotOn.i===i)?null:{list,i};draw()};
+  s.ondragover=e=>{if(!drag)return;if(drag.node&&(drag.node===list[i]||inside(drag.node,list)))return;e.preventDefault();s.classList.add('over')};
+  s.ondragleave=()=>s.classList.remove('over');
+  s.ondrop=e=>{e.preventDefault();const d=drag;drag=null;if(!d)return;
+    edit(()=>{let j=i;
+      if(d.node){const k=list.indexOf(d.node);removeNode(d.node);if(k>=0&&k<i)j--;insertAt(list,j,d.node)}
+      else insertAt(list,j,make(d.type,d.o))})};
+  return s}
+function body(list,horizontal){
+  const s=el('div',horizontal?'chain':'stream');
+  list.forEach((n,i)=>{s.append(slot(list,i));s.append(node(n))});
+  s.append(slot(list,list.length));return s}
+function modDef(name){let d=null;eachNode(n=>{if(n.type==='Group'&&n.name===name&&n.body.length&&!d)d=n});return d}
+const slotsOf=n=>{const d=n.body.length?n:modDef(n.name);return d?{ins:d.ins||[],outs:d.outs||[]}:{ins:n.ins||[],outs:n.outs||[]}};
+const sig=n=>{const {ins,outs}=slotsOf(n);return '('+ins.map(i=>`${i.name}: ${i.type}`).join(', ')+')'+(outs.length?' → '+outs.map(o=>(o.name?o.name+': ':'')+(o.type||'?')).join(', '):'')};
+const canGuard=n=>n.type==='Group'||(DEF[n.type]||{}).kind!=='node';
+const isCall=n=>n.type==='Group'&&!n.body.length&&!!modDef(n.name);
+function callOf(m){const d=modDef(m);const args={};((d&&d.ins)||[]).forEach(i=>args[i.name]='$'+i.name);return {name:m,args}}
+function condOf(name){return S.conds.find(c=>c.name===name)}
+function card(n){
+  const d=DEF[n.type]||{};const c=el('div','card '+(d.cls||''));
+  if(n.type==='Group'){c.classList.add('code');c.title=n.name+' '+sig(n)}
+  c.append(el('div','nm',n.type==='Group'?`<span class="pt">모듈</span>${esc(n.name)}`:(d.pt?`<span class="pt">${d.pt}</span>`:'')+esc(d.label||n.type)));
+  const main=n.type==='If'?n.cond:n.type==='Gate'?n.args.prompt:n.type==='Set'?n.text:'';
+  if(main)c.append(el('div','nt',esc(main)));
+  if(n.nt)c.append(el('div','nt',esc(n.nt)));
+  const ar=Object.entries(n.args).filter(([k,v])=>v!==''&&!(n.type==='Gate'&&k==='prompt')).map(([k,v])=>`${k}: ${v}`).join(' · ');
+  if(ar)c.append(el('div','ar',esc(ar)));
+  if(n.out)c.append(el('span','tag','→ '+esc(n.out)));
+  c.draggable=true;
+  c.ondragstart=e=>{drag={node:n};e.dataTransfer.setData('text/plain','n');e.stopPropagation();document.body.classList.add('dragging')};
+  c.ondragend=()=>{drag=null;document.body.classList.remove('dragging')};
+  c.onclick=e=>{e.stopPropagation();sel=n;draw()};
+  if(canGuard(n))c.classList.add('mv');
+  return c}
+function condDrop(elm,n){ // 조건 블록을 갖다 대면 붙는다
+  elm.ondragover=e=>{if(drag&&drag.cond){e.preventDefault();e.stopPropagation();elm.classList.add('over')}};
+  elm.ondragleave=e=>{if(!elm.contains(e.relatedTarget))elm.classList.remove('over')};
+  elm.ondrop=e=>{if(!(drag&&drag.cond))return;e.preventDefault();e.stopPropagation();const r=drag.cond;drag=null;
+    document.body.classList.remove('dragcond');
+    edit(()=>{if(!n.guards.some(g=>g.ref===r))n.guards.push({ref:r,arg:''});sel=n})}}
+function guardChips(n,into,inline){
+  (n.guards||[]).forEach(g=>{const c=condOf(g.ref);const e=el('div','exit e-'+(c?c.end:'none'));
+    const cp=el('span','chip',`<i></i>${esc(g.ref)}${g.arg?' '+esc(g.arg):''}`);
+    cp.onclick=ev=>{ev.stopPropagation();if(c){sel=c;draw()}};e.append(cp);
+    cp.title=c?'걸리면: '+(c.body.map(b=>b.type).join(' → ')||'—')+' → '+END[c.end]:'';
+    if(!c){const q=el('span','muted',' ? 조건 블록 없음');e.append(q)}
+    into.append(e)})}
+function endPill(obj,allowAgain){
+  const p=el('span','end '+obj.end,END[obj.end]);p.title='눌러서 바꾼다';
+  p.onclick=e=>{e.stopPropagation();const o=allowAgain?['cont','stop','again']:['cont','stop'];
+    edit(()=>{obj.end=o[(o.indexOf(obj.end)+1)%o.length]})};return p}
+function node(n){
+  if(n.type==='Loop'||(n.type==='Group'&&!isCall(n))||n.type==='Parallel'){
+    const b=el('div','box '+n.type+(sel===n?' sel':''));
+    const t=n.type==='Loop'?'Loop · '+(n.n?esc(n.n)+'번':'맨 아래 If 가 ↺ 인 동안'):n.type==='Group'?esc(n.name)+` <span class="sig">${esc(sig(n))}</span>`:'Parallel · 둘 다 끝나면 다음';
+    const h=el('div','hd',t+(n.nt?` <span>${esc(n.nt)}</span>`:''));
+    h.onclick=e=>{e.stopPropagation();sel=n;draw()};
+    h.draggable=true;h.ondragstart=e=>{drag={node:n};e.dataTransfer.setData('text/plain','n');e.stopPropagation();document.body.classList.add('dragging')};
+    h.ondragend=()=>{drag=null;document.body.classList.remove('dragging')};
+    b.append(h);
+    if(n.type==='Group'){const ar=Object.entries(n.args).filter(([k,v])=>v!=='').map(([k,v])=>`${k}: ${v}`).join(' · ');
+      if(ar||n.out){const l=el('div','callrow');if(ar)l.append(el('span','ar',esc(ar)));if(n.out)l.append(el('span','tag','→ '+esc(n.out)));b.append(l)}}
+    if(n.type==='Group'){condDrop(b,n);
+      if(n.guards&&n.guards.length){const gl=el('div','glane');gl.append(el('span','muted','이 모듈 안에서 움직이는 동안'));guardChips(n,gl);b.append(gl)}}
+    if(n.cols){const cs=el('div','cols');n.cols.forEach(c=>{const col=el('div','col');col.append(body(c));cs.append(col)});b.append(cs)}
+    else b.append(body(n.body));
+    return b}
+  if(n.br&&n.wide){const w=el('div','wrap');const r0=el('div','row'+(sel===n?' sel':''));r0.append(card(n));w.append(r0);
+    const ls=el('div','lanes');
+    n.br.forEach(b=>{const l=el('div','lane'+(b.fold?' fold':''));
+      const h=el('div','lh exit e-'+b.end);
+      h.append(el('span','chip',`<i class="${n.type==='If'?'cond':'choice'}"></i>${esc(b.label)}`));
+      const f=el('button','fb',b.fold?'▸':'◂');f.title=b.fold?'펴기':'접기';
+      f.onclick=e=>{e.stopPropagation();b.fold=!b.fold;save();drawCanvas()};h.append(f);l.append(h);
+      if(!b.fold){l.append(body(b.body));l.append(endPill(b,n.type==='If'))}
+      ls.append(l)});
+    w.append(ls);return w}
+  const row=el('div','row'+(sel===n?' sel':''));row.append(card(n));
+  const ex=el('div','exits');
+  guardChips(n,ex);if(canGuard(n))condDrop(row,n);
+  (n.br||[]).forEach(b=>{const e=el('div','exit e-'+b.end);
+    e.append(el('span','chip',`<i class="${n.type==='If'?'cond':'choice'}"></i>${esc(b.label)}`));
+    const chn=body(b.body,true);chn.append(endPill(b,n.type==='If'));e.append(chn);ex.append(e)});
+  if(ex.children.length)row.append(ex);
+  return row}
+function drawCanvas(){const c=document.getElementById('canvas');const y=c.scrollTop,x=c.scrollLeft;c.innerHTML='';c.append(body(S.main));c.scrollTop=y;c.scrollLeft=x}
+function flashCond(name){const d=[...document.querySelectorAll('.cdef')].find(e=>e.dataset.name===name);if(!d)return;
+  d.scrollIntoView({block:'center'});d.classList.remove('flash');void d.offsetWidth;d.classList.add('flash')}
+
+// ---------- 블록 목록 ----------
+function drawPal(){const p=document.getElementById('pal');const y=p.scrollTop;p.innerHTML='';
+  p.append(el('h2','','조건 블록'));
+  const uses={};eachNode(n=>(n.guards||[]).forEach(g=>uses[g.ref]=(uses[g.ref]||0)+1));
+  S.conds.forEach(c=>{const it=el('div','pi cb e-'+c.end+(sel===c?' on':''),`${esc(c.name)}<span>${c.end==='cont'?'↓':'■'} · ${uses[c.name]||0}곳</span>`);
+    it.draggable=true;it.title='누르면 오른쪽에서 고친다 · 블록 카드나 모듈(묶음)에 갖다 대면 붙는다';
+    it.ondragstart=e=>{drag={cond:c.name};e.dataTransfer.setData('text/plain',c.name);document.body.classList.add('dragcond')};it.ondragend=()=>{drag=null;document.body.classList.remove('dragcond');document.querySelectorAll('.over').forEach(x=>x.classList.remove('over'))};
+    it.onclick=()=>{sel=c;draw()};p.append(it)});
+  const add=el('button','','+ 조건 블록');add.style.margin='4px 0 2px';
+  add.onclick=()=>edit(()=>{const c={name:'새_조건'+(S.conds.length+1),check:'ForceOver',args:CHECKS.ForceOver,body:[],end:'stop'};S.conds.push(c);sel=c});p.append(add);
+  const mods=[];eachNode(n=>{if(n.type==='Group'&&n.body.length&&!mods.includes(n.name))mods.push(n.name)});
+  if(mods.length){p.append(el('h2','','모듈 — 만든 묶음을 다시 쓴다'));
+    mods.forEach(m=>{const it=el('div','pi code',`${esc(m)}<span>모듈</span>`);it.draggable=true;
+      it.ondragstart=e=>{drag={type:'Group',o:callOf(m)};e.dataTransfer.setData('text/plain',m);document.body.classList.add('dragging')};
+      it.ondragend=()=>{drag=null;document.body.classList.remove('dragging')};
+      it.onclick=()=>edit(()=>{const t=slotOn||{list:S.main,i:S.main.length};insertAt(t.list,t.i,make('Group',callOf(m)))});p.append(it)})}
+  setTimeout(()=>{p.scrollTop=y});
+  Object.entries(CAT).forEach(([g,items])=>{p.append(el('h2','',g));
+    Object.entries(items).forEach(([k,d])=>{
+      const it=el('div','pi '+(d.kind==='node'&&!d.cls?'node':d.cls||''),`${d.label||k}<span>${d.pt||''}</span>`);
+      it.draggable=true;
+      it.ondragstart=e=>{drag={type:k};e.dataTransfer.setData('text/plain',k);document.body.classList.add('dragging')};
+      it.ondragend=()=>{drag=null;document.body.classList.remove('dragging')};
+      it.onclick=()=>edit(()=>{const t=slotOn||{list:S.main,i:S.main.length};insertAt(t.list,t.i,make(k))});
+      p.append(it)})})}
+
+// ---------- 속성 ----------
+function field(label,val,on,ph){const f=el('div','f');f.append(el('label','',esc(label)));const i=el('input');i.value=val||'';if(ph)i.placeholder=ph;i.setAttribute('list','vars');
+  i.onfocus=snap;i.oninput=()=>{on(i.value);save();drawCanvas();drawYaml()};f.append(i);return f}
+function drawInsp(){const p=document.getElementById('insp');p.innerHTML='';p.append(el('h2','','속성'));
+  const n=sel;if(!n){p.append(el('div','muted','카드나 왼쪽의 조건 블록을 누르면 여기서 값을 고친다.'));return}
+  if(S.conds.includes(n)){condInsp(p,n);return}
+  const d=DEF[n.type]||{};p.append(el('div','',`<b>${esc(d.label||n.type)}</b> <span class="muted">${d.pt||''}</span>`));
+  if(n.type==='If')p.append(field('조건',n.cond,v=>n.cond=v,'$stack.src >= 1 또는 Reachable'));
+  if(n.type==='Gate')p.append(field('질문',n.args.prompt,v=>n.args.prompt=v));
+  if(n.type==='Set')p.append(field('바꿀 값',n.text,v=>n.text=v,'$stack.src: "$stack.src - 1"'));
+  if(n.type==='Loop')p.append(field('몇 번',n.n,v=>n.n=v,'비우면 맨 아래 If 로 끝낸다'));
+  if(n.type==='Group')groupInsp(p,n);
+  (d.in||[]).forEach(k=>p.append(field(k,n.args[k],v=>{if(v==='')delete n.args[k];else n.args[k]=v})));
+  if(d.in||(!d.kind)||n.type==='Group')p.append(field('out',n.out,v=>n.out=v,'$변수'));
+  p.append(field('메모',n.nt,v=>n.nt=v,'무엇을 하는 블록인지'));
+  if(n.type==='Gate'||n.type==='If'){
+    const wr=el('label','rowb');const cb=el('input');cb.type='checkbox';cb.checked=!!n.wide;cb.onchange=()=>edit(()=>{n.wide=cb.checked});
+    wr.append(cb,document.createTextNode(' 갈래를 아래로 나란히 펼친다 (긴 가지일 때)'));p.append(wr);
+    p.append(el('h2','',n.type==='Gate'?'선택지':'갈림'));
+    n.br.forEach((b,i)=>{const r=el('div','rowb');const inp=el('input');inp.value=b.label;inp.onfocus=snap;
+      inp.oninput=()=>{b.label=inp.value;save();drawCanvas();drawYaml()};r.append(inp);
+      if(n.type==='Gate'){const x=el('button','x','✕');x.onclick=()=>edit(()=>n.br.splice(i,1));r.append(x)}
+      p.append(r)});
+    if(n.type==='Gate'){const a=el('button','','+ 선택지');a.onclick=()=>edit(()=>n.br.push(br('새 선택')));p.append(a)}}
+  if(n.type==='Parallel'){const r=el('div','rowb');const a=el('button','','+ 줄');a.onclick=()=>edit(()=>n.cols.push([]));
+    const m=el('button','','− 빈 줄');m.onclick=()=>edit(()=>{const i=n.cols.findIndex(c=>!c.length);if(i>=0&&n.cols.length>2)n.cols.splice(i,1)});r.append(a,m);p.append(r)}
+  if(canGuard(n)){n.guards=n.guards||[];p.append(el('h2','',n.type==='Group'?'가드 — 이 모듈이 도는 동안 보는 조건 블록':'가드 — 이 블록이 도는 동안 보는 조건 블록'));
+    n.guards.forEach((g,i)=>{const r=el('div','rowb');r.append(el('b','',esc(g.ref)));
+      const inp=el('input');inp.value=g.arg||'';inp.placeholder='값 (예: s: 8)';inp.onfocus=snap;
+      inp.oninput=()=>{g.arg=inp.value;save();drawCanvas();drawYaml()};r.append(inp);
+      const x=el('button','x','✕');x.onclick=()=>edit(()=>n.guards.splice(i,1));r.append(x);p.append(r)});
+    const s=el('select');s.append(new Option('+ 조건 블록 꽂기',''));S.conds.forEach(c=>s.append(new Option(c.name,c.name)));
+    s.onchange=()=>{if(s.value)edit(()=>n.guards.push({ref:s.value,arg:''}))};p.append(s);
+    if(!S.conds.length)p.append(el('div','muted','왼쪽에서 조건 블록을 먼저 만든다.'))}
+  const r=el('div','rowb');r.style.marginTop='10px';
+  const del=el('button','x','지우기');del.onclick=()=>edit(()=>{removeNode(n);sel=null});
+  const dup=el('button','','복제');dup.onclick=()=>edit(()=>{eachList(l=>{const i=l.indexOf(n);if(i>=0&&!dup.done){dup.done=1;l.splice(i+1,0,JSON.parse(JSON.stringify(n)))}})});
+  r.append(dup,del);p.append(r)}
+
+// ---------- 모듈: 입력 칸(이름 + 타입), 출력 칸(이름 + 값), 여기서 꽂는 값 ----------
+function sameMods(name){const a=[];eachNode(n=>{if(n.type==='Group'&&n.name===name)a.push(n)});return a}
+function groupInsp(p,n){
+  const call=isCall(n), def=call?modDef(n.name):n;
+  if(call)p.append(el('div','muted',`모듈 <b>${esc(n.name)}</b> 을 부른다. 칸은 모듈을 만든 곳에서 고친다.`));
+  else{
+    const f=el('div','f');f.append(el('label','','이름'));const nm=el('input');nm.value=n.name;nm.onfocus=snap;
+    nm.oninput=()=>{const old=n.name;sameMods(old).forEach(m=>m.name=nm.value);save();drawCanvas();drawPal();drawYaml()};f.append(nm);p.append(f);
+    p.append(el('h2','','입력 칸 — 이름 + 타입'));
+    (n.ins=n.ins||[]).forEach((s,i)=>{const r=el('div','srow');
+      const a=el('input');a.value=s.name;a.placeholder='이름';a.onfocus=snap;
+      a.oninput=()=>{const old=s.name;s.name=a.value;sameMods(n.name).forEach(m=>{if(old in m.args){m.args[s.name]=m.args[old];delete m.args[old]}});save();drawCanvas();drawYaml()};
+      const t=typeSel(s);t.onchange=()=>edit(()=>{s.type=t.value});
+      const x=el('button','x','✕');x.onclick=()=>edit(()=>{n.ins.splice(i,1);sameMods(n.name).forEach(m=>delete m.args[s.name])});
+      r.append(a,t,x);p.append(r)});
+    const ai=el('button','','+ 입력 칸');ai.onclick=()=>edit(()=>n.ins.push({name:'in'+(n.ins.length+1),type:'Height'}));p.append(ai);
+    p.append(el('h2','','출력 칸 — 이름 + 타입 + 값 (이름을 비우면 값 하나만 낸다)'));
+    (n.outs=n.outs||[]).forEach((s,i)=>{const r=el('div','srow');
+      const a=el('input');a.value=s.name;a.placeholder='이름';a.onfocus=snap;a.oninput=()=>{s.name=a.value;save();drawCanvas();drawYaml()};
+      const v=el('input');v.value=s.value;v.placeholder='$안쪽_변수';v.onfocus=snap;v.oninput=()=>{s.value=v.value;save();drawYaml()};
+      const t=typeSel(s);t.onchange=()=>edit(()=>{s.type=t.value});
+      const x=el('button','x','✕');x.onclick=()=>edit(()=>n.outs.splice(i,1));
+      r.append(a,t,v,x);p.append(r)});
+    const ao=el('button','','+ 출력 칸');ao.onclick=()=>edit(()=>n.outs.push({name:'out'+(n.outs.length+1),type:'Height',value:''}));p.append(ao)}
+  const ins=(def&&def.ins)||[];
+  p.append(el('h2','',ins.length?'여기서 꽂는 값':'입력 칸이 없다'));
+  ins.forEach(s=>p.append(field(`${s.name} (${s.type})`,n.args[s.name],v=>{if(v==='')delete n.args[s.name];else n.args[s.name]=v},'$변수 또는 값')))}
+
+// ---------- 조건 블록 (속성 칸에서 고친다) ----------
+function condInsp(p,c){
+  p.append(el('div','','<b>조건 블록</b> <span class="muted">조건 + 걸리면 할 일 + 끝</span>'));
+  const d=el('div','cdef');
+  const f1=el('div','f');f1.append(el('label','','이름'));const nm=el('input');nm.value=c.name;nm.onfocus=snap;
+  nm.oninput=()=>{const old=c.name;c.name=nm.value;eachNode(n=>(n.guards||[]).forEach(g=>{if(g.ref===old)g.ref=c.name}));save();drawCanvas();drawPal();drawYaml()};
+  f1.append(nm);d.append(f1);
+  const f2=el('div','f');f2.append(el('label','','조건'));const s=el('select');Object.keys(CHECKS).forEach(k=>s.append(new Option(k,k)));s.value=c.check;
+  s.onchange=()=>edit(()=>{c.check=s.value;c.args=CHECKS[s.value]});f2.append(s);d.append(f2);
+  const f3=el('div','f');f3.append(el('label','','값'));const a=el('input');a.value=c.args;a.placeholder='쓰는 곳에서 주면 비운다';a.onfocus=snap;
+  a.oninput=()=>{c.args=a.value;save();drawYaml()};f3.append(a);d.append(f3);
+  d.append(el('small','','걸리면 → (블록을 끌어다 놓는다. 끝 표시를 누르면 바뀐다)'));
+  const chn=body(c.body,true);chn.append(endPill(c,false));d.append(chn);
+  let u=0;eachNode(n=>(n.guards||[]).forEach(g=>{if(g.ref===c.name)u++}));
+  const r=el('div','rowb');r.append(el('small','',`쓰는 곳 ${u}`));
+  const x=el('button','x','지우기');x.style.marginLeft='auto';x.onclick=()=>edit(()=>{S.conds.splice(S.conds.indexOf(c),1);sel=null});r.append(x);d.append(r);
+  p.append(d)}
+
+// ================= YAML =================
+class Raw{constructor(s){this.s=s}}
+const bare=s=>/^[\p{L}\p{N}_$.\-]+$/u.test(s);
+const val=s=>{s=String(s).trim();return new Raw(/^[\[{"']/.test(s)||bare(s)?s:JSON.stringify(s))};
+const key=s=>bare(String(s))?String(s):JSON.stringify(String(s));
+const cname=s=>String(s).trim().replace(/\s+/g,'_');
+function argObj(text){const s=String(text||'').trim();return s?new Raw('{'+s+'}'):{}}
+function branch(b){const body=b.body.map(toObj);
+  if(!body.length)return new Raw(b.end==='cont'?'continue':b.end);
+  if(b.end!=='stop')body.push(new Raw(b.end==='cont'?'continue':'again'));return body}
+function toObj(n){
+  if(n.type==='If')return {If:{[/^[A-Z]\w*$/.test(n.cond.trim())?'check':'expr']:val(n.cond),then:branch(n.br[0]),else:branch(n.br[1])}};
+  if(n.type==='Gate'){const ch={};n.br.forEach(b=>ch[b.label]=branch(b));const o={prompt:val(n.args.prompt||''),choices:ch};if(n.out)o.out=val(n.out);return {Gate:o}}
+  if(n.type==='Loop'){const o={};if(n.n)o.n=val(n.n);o.body=n.body.map(toObj);return {Loop:o}}
+  if(n.type==='Parallel')return {Parallel:n.cols.map(c=>c.length===1?toObj(c[0]):{Sequence:c.map(toObj)})};
+  if(n.type==='Set')return {Set:argObj(n.text)};
+  if(n.type==='Group'){
+    if(n.body.length||!MAC[cname(n.name)]){const ins={};(n.ins||[]).forEach(i=>ins[i.name]=new Raw(i.type));
+      const os=(n.outs||[]).filter(o=>o.value!=='');let outs=null;
+      const tv=o=>({type:new Raw(o.type||'?'),value:val(o.value)});
+      if(os.length===1&&!os[0].name)outs=tv(os[0]);else if(os.length){outs={};os.forEach(o=>outs[o.name||'out']=tv(o))}
+      MAC[cname(n.name)]={inputs:ins,outputs:outs,main:{Sequence:n.body.map(toObj)}}}
+    const o={};Object.entries(n.args).forEach(([k,v])=>{if(v!=='')o[k]=val(v)});
+    if(n.guards&&n.guards.length)o.guards=n.guards.map(g=>g.arg?{[cname(g.ref)]:argObj(g.arg)}:new Raw(cname(g.ref)));
+    if(n.out)o.out=val(n.out);return {[cname(n.name)]:o}}
+  const o={};Object.entries(n.args).forEach(([k,v])=>{if(v!=='')o[k]=val(v)});
+  if(n.guards.length)o.guards=n.guards.map(g=>g.arg?{[cname(g.ref)]:argObj(g.arg)}:new Raw(cname(g.ref)));
+  if(n.out)o.out=val(n.out);return {[n.type]:o}}
+let MAC={};
+const one=x=>x&&typeof x==='object'&&!(x instanceof Raw)&&!Array.isArray(x)&&Object.keys(x).length===1?Object.entries(x)[0]:null;
+function flow(v){
+  if(v instanceof Raw)return v.s;
+  if(Array.isArray(v))return '['+v.map(x=>one(x)?key(one(x)[0])+': '+flow(one(x)[1]):flow(x)).join(', ')+']';
+  if(v&&typeof v==='object')return '{'+Object.entries(v).map(([k,x])=>key(k)+': '+flow(x)).join(', ')+'}';
+  return String(v)}
+function dump(v,ind){const pad=' '.repeat(ind);
+  if(v instanceof Raw||typeof v!=='object')return [pad+flow(v)];
+  if(Array.isArray(v)){if(!v.length)return [pad+'[]'];
+    return v.flatMap(x=>{const f=one(x)?key(one(x)[0])+': '+flow(one(x)[1]):flow(x);if(f.length+ind<=110)return [pad+'- '+f];
+      const ls=dump(x,ind+2);ls[0]=pad+'- '+ls[0].slice(ind+2);return ls})}
+  const ks=Object.entries(v);if(!ks.length)return [pad+'{}'];
+  return ks.flatMap(([k,x])=>{const f=flow(x);
+    if(x instanceof Raw||typeof x!=='object'||f.length+ind+k.length<=110)return [pad+key(k)+': '+f];
+    return [pad+key(k)+':',...dump(x,ind+2)]})}
+function yaml(){MAC={};
+  const main=S.main.map(toObj);const conds={};
+  S.conds.forEach(c=>{const o={check:{[c.check]:argObj(c.args)},then:branch(c)};conds[cname(c.name)]=o});
+  const out=[];
+  if(S.conds.length){out.push('conditions:');Object.entries(conds).forEach(([k,o])=>out.push(...dump({[k]:o},2)))}
+  out.push('inputs: {}','main:','  Sequence:',...(main.length?dump(main,4):['    []']));
+  Object.entries(MAC).forEach(([k,m])=>{out.push('','# macros/'+k+'.yaml','name: '+k,'inputs: '+flow(m.inputs),...(m.outputs?['outputs: '+flow(m.outputs)]:[]),'main:','  Sequence:',...(m.main.Sequence.length?dump(m.main.Sequence,4):['    []']))});
+  return out.join('\n')+'\n'}
+function drawYaml(){if(document.getElementById('yaml').classList.contains('on'))document.getElementById('ytext').textContent=yaml()}
+function drawVars(){let dl=document.getElementById('vars');if(!dl){dl=el('datalist');dl.id='vars';document.body.append(dl)}
+  const v=new Set();eachNode(n=>{if(n.out)v.add(n.out);(n.ins||[]).forEach(i=>v.add('$'+i.name))});
+  dl.innerHTML='';[...v].sort().forEach(x=>dl.append(new Option(x,x)))}
+function draw(){drawVars();drawPal();drawCanvas();drawInsp();drawYaml()}
+
+// ================= 예시 (기본 블록만) =================
+function example(){
+  const A=(type,nt,args,o)=>make(type,{nt:nt||'',args:args||{},...(o||{})});
+  const G=(ref,arg)=>({ref,arg:arg||''});
+  const If=(cond,yes,no)=>make('If',{cond,br:[br('예',yes[0],yes[1]),br('아니오',no[0],no[1])]});
+  const M=(name,nt,ins,outs,args,out,body)=>make('Group',{name,nt,ins:ins.map(([n,t])=>({name:n,type:t})),outs:outs.map(([n,ty,v])=>({name:n,type:ty,value:v})),args,out:out||'',body});
+  const C=(name,args,out)=>make('Group',{name,args,out:out||''});
+  const up=()=>[A('SuctionOff','놓는다'),A('MoveEE','곧게 올린다',{pose:'{z: $params.lift_z}',keep_xy:'true'})];
+  return {conds:[
+    {name:'닿음',check:'ForceOver',args:'threshold: 10',body:[],end:'cont'},
+    {name:'세게 닿음',check:'ForceOver',args:'threshold: 20',body:up(),end:'stop'},
+    {name:'씰 됨',check:'Sealed',args:'',body:[],end:'cont'},
+    {name:'시간 초과',check:'Timeout',args:'',body:up(),end:'stop'}],
+   main:[make('Gate',{wide:true,args:{prompt:'무엇을 하나?'},br:[
+    br('하나 집어서 옮기기','cont',[
+      A('OperatorDrive','운영자가 섀시를 물건 앞에 세운다',{prompt:'섀시를 물건 앞에 세운다'}),
+      M('TouchDown','닿을 때까지 내려간다',[['pose','Pose'],['floor_z','Height']],[['contact_z','Height','$touch.pose_at_stop.z']],{pose:'$params.pick_pose',floor_z:'$params.floor_z'},'$td',[
+        A('MoveEE','목표 위로',{pose:'$pose'},{guards:[G('세게 닿음')]}),
+        A('MoveEE','천천히 내려감 — 닿을 때까지',{pose:'{z: $floor_z}',keep_xy:'true',speed:'0.05'},{out:'$touch',guards:[G('닿음'),G('시간 초과','s: 8')]})]),
+      A('SuctionOn','진공 켠다'),
+      A('Wait','씰 될 때까지',{},{guards:[G('씰 됨'),G('시간 초과','s: 5')]}),
+      M('LiftTo','곧게 들어 올린다',[['z','Height']],[['','Pose','$up.pose_at_stop']],{z:'$params.lift_z'},'$at',[
+        A('MoveEE','수직으로 올림',{pose:'{z: $z}',keep_xy:'true'},{out:'$up'})]),
+      make('Parallel',{cols:[[A('BaseMove','옆 자리로',{dy:'$params.leg'})],[A('MoveJoints','팔을 몸 쪽으로',{group:'left_arm',q:'$params.carry_q'})]]}),
+      C('TouchDown',{pose:'$params.place_pose',floor_z:'$params.floor_z'},'$put'),
+      If('$put.contact_z > $params.floor_z',['cont',[A('SuctionOff','놓는다',{blow:'true'})]],['stop',[A('SuctionOff','놓는다')]]),
+      C('LiftTo',{z:'$params.lift_z'},'')]),
+    br('세 군데 높이 재기','cont',[
+      make('Set',{text:'$left: "3"',nt:'남은 횟수'}),
+      make('Loop',{nt:'남은 동안',body:[
+        C('TouchDown',{pose:'$params.probe_pose',floor_z:'$params.floor_z'},'$m'),
+        C('LiftTo',{z:'$params.lift_z'},''),
+        A('BaseMove','다음 자리로',{dy:'0.2'}),
+        make('Set',{text:'$left: "$left - 1"',nt:'하나 줄었다'}),
+        If('$left >= 1',['again'],['cont'])]})]),
+    br('그만','stop')]})]}}
+
+// ================= 시작 =================
+document.getElementById('undo').onclick=undo;
+document.getElementById('new').onclick=()=>edit(()=>{S={main:[],conds:[]};sel=null;slotOn=null});
+document.getElementById('ex').onclick=()=>edit(()=>{S=example();sel=null;slotOn=null});
+document.getElementById('ybtn').onclick=()=>{document.getElementById('yaml').classList.toggle('on');drawYaml()};
+document.getElementById('ydl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([yaml()],{type:'text/yaml'}));a.download='program.yaml';a.click()};
+document.addEventListener('keydown',e=>{const typing=/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!typing){e.preventDefault();undo()}
+  if((e.key==='Delete'||e.key==='Backspace')&&sel&&!typing){e.preventDefault();edit(()=>{const i=S.conds.indexOf(sel);if(i>=0)S.conds.splice(i,1);else removeNode(sel);sel=null})}});
+document.getElementById('canvas').onclick=()=>{sel=null;slotOn=null;draw()};
+try{const s=localStorage.getItem('ts_editor');if(s)S=JSON.parse(s)}catch(e){}
+if(location.hash.includes('example')||(!S.main.length&&!S.conds.length&&!location.hash.includes('empty')))S=example();
+if(location.hash.includes('yaml'))document.getElementById('yaml').classList.add('on');
+if(location.hash.includes('selcond'))sel=S.conds[1]||null;
+if(location.hash.includes('selmod')){eachNode(n=>{if(n.type==='Group'&&n.name==='TouchDown'&&n.body.length)sel=n})}
+if(location.hash.includes('demoguard')){let g;eachNode(n=>{if(n.type==='Group'&&n.name==='TouchDown')g=n});if(g){g.guards.push({ref:'세게 닿음',arg:''});sel=g}}
+draw();
+
+// 스스로 해 보는 시험 (#selftest): 넣기 · 가드 꽂기 · 옮기기 · 지우기 · 되돌리기 · YAML
+if(location.hash.includes('selftest')){const out=[];const ok=(c,m)=>out.push((c?'OK ':'FAIL ')+m);
+  S={main:[],conds:[]};hist=[];
+  edit(()=>insertAt(S.main,0,make('MoveEE')));edit(()=>insertAt(S.main,1,make('Wait')));
+  edit(()=>S.conds.push({name:'닿음',check:'ForceOver',args:'threshold: 10',body:[],end:'cont'}));
+  edit(()=>S.main[0].guards.push({ref:'닿음',arg:''}));
+  ok(document.querySelectorAll('#canvas .card').length===2,'카드 2장');
+  ok(document.querySelectorAll('#canvas .chip').length===1,'가드 칩 1개');
+  edit(()=>insertAt(S.main,2,make('If')));edit(()=>insertAt(S.main[2].br[0].body,0,make('SuctionOn')));
+  ok(yaml().includes('then: [SuctionOn: {}, continue]'),'If 가지 YAML');
+  edit(()=>{const n=S.main[1];removeNode(n);insertAt(S.main,0,n)});ok(S.main[0].type==='Wait','옮기기');
+  edit(()=>removeNode(S.main[0]));ok(S.main.length===2,'지우기');
+  undo();ok(S.main.length===3,'되돌리기');
+  sel=S.conds[0];draw();ok(!!document.querySelector('#insp .cdef')&&document.querySelectorAll('#pal .pi.cb').length===1,'조건 블록을 누르면 속성에 나온다');
+  {const g=make('Group',{name:'M'});S.main.push(g);g.guards.push({ref:'닿음',arg:''});draw();
+   ok(document.querySelectorAll('#canvas .glane .chip').length===1&&yaml().includes('M: {guards: [닿음]}'),'모듈에 조건 블록 붙이기');
+   ok(typeof document.querySelector('#canvas .box.Group').ondrop==='function'&&typeof document.querySelector('#canvas .row').ondrop==='function','갖다 댈 자리');}
+  S=example();sel=null;draw();const y=yaml();
+  ok(document.querySelectorAll('#canvas .lanes>.lane').length===3,'갈래 3칸');
+  ok(y.includes('name: TouchDown\ninputs: {pose: Pose, floor_z: Height}\noutputs: {contact_z: {type: Height, value: $touch.pose_at_stop.z}}'),'모듈 입력 칸 · 출력 칸 YAML (타입 이름)');
+  ok(y.includes('TouchDown: {pose: $params.place_pose, floor_z: $params.floor_z, out: $put}')&&y.includes('outputs: {type: Pose, value: $up.pose_at_stop}'),'부르는 곳에 꽂은 값 · 값 하나 출력');
+  {let d;eachNode(n=>{if(n.type==='Group'&&n.name==='TouchDown'&&n.body.length)d=n});sel=d;drawInsp();
+   const before=document.querySelectorAll('#insp .srow').length;d.ins.push({name:'speed',type:'Speed'});drawInsp();
+   ok(before===3&&document.querySelectorAll('#insp .srow').length===4&&callOf('TouchDown').args.speed==='$speed','속성: 칸 3줄 → 입력 칸 추가 · 같은 이름 자동 채움');
+   d.ins.pop();sel=null}
+  ok(document.querySelectorAll('#canvas .card.code').length>=4&&(y.match(/# macros\/TouchDown.yaml/g)||[]).length===1,'모듈 부르기 (정의는 한 번)');
+  S.main[0].br[0].fold=true;drawCanvas();ok(document.querySelectorAll('#canvas .lane.fold').length===1,'갈래 접기');S.main[0].br[0].fold=false;drawCanvas();
+  ok(y.includes('guards: [닿음, 시간_초과: {s: 8}]'),'예시 가드 YAML');
+  ok(y.includes('# macros/TouchDown.yaml')&&y.includes('# macros/LiftTo.yaml'),'묶음 → 매크로');
+  ok(!document.getElementById('err').textContent,'오류 없음');
+  document.title=out.every(s=>s.startsWith('OK'))?'SELFTEST PASS':'SELFTEST FAIL';
+  const pre=el('pre');pre.id='selftest';pre.textContent=out.join('\n')+'\n---\n'+y;document.body.append(pre)}
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# ① 기본 타입. 칸에는 여기 이름만 적는다 (number / text / list 를 직접 적지 않는다). 전부 base_link 기준, m / rad.
+bool:        {base: bool,   desc: 예 / 아니오}
+Height:      {base: number, unit: m,   desc: 높이 z}
+Distance:    {base: number, unit: m,   desc: 길이 · 이동량}
+Angle:       {base: number, unit: rad, desc: 각도}
+Count:       {base: number,            desc: 개수}
+Seconds:     {base: number, unit: s,   desc: 시간}
+Force:       {base: number, unit: N,   desc: 힘}
+Torque:      {base: number, unit: Nm,  desc: 토크}
+Speed:       {base: number,            desc: 속도 (m/s, rad/s 또는 배율)}
+Ratio:       {base: number,            desc: 0~1 사이 값 (검출 신뢰도 등)}
+PartName:    {base: text, desc: 파트 이름 (팔 · 관절 묶음 · 카메라 · 검출기)}
+ObjectClass: {base: text, desc: 검출할 물체 종류}
+StationName: {base: text, desc: 스테이션 이름}
+Message:     {base: text, desc: 운영자에게 보이는 글}
+Option:      {base: text, desc: 정해진 것 중 고르는 값 (축 · 접근 방향 · 기준 좌표 · 운영자 선택)}
+StopReason:  {base: text, desc: 블록이 멈춘 까닭 — reached 또는 걸린 조건 블록 이름}
+JointAngles: {base: list, of: Angle, desc: 관절 각도 목록}
+Detections:  {base: list, of: ObjectPose, desc: 검출 결과 목록}
+Pose:        {desc: 자리와 방향, fields: {x: Distance, y: Distance, z: Height, roll: Angle, pitch: Angle, yaw: Angle}}
+ObjectPose:  {desc: 검출한 물체 하나 (중심 · 윗면 높이 · 긴 변 방향), fields: {cls: ObjectClass, pose: Pose, conf: Ratio}}
+Wrench:      {desc: 손목 힘, fields: {fx: Force, fy: Force, fz: Force, tx: Torque, ty: Torque, tz: Torque, t: Seconds}}
+Frame:       {desc: 사진 한 장 + 찍을 때 관절, fields: {q_torso: JointAngles, q_head: JointAngles, t: Seconds}}
+JointState:  {desc: 관절 묶음의 각도, fields: {group: PartName, q: JointAngles}}
+Station:     {desc: 스테이션, fields: {name: StationName, pose: Pose}}
+Decision:    {desc: 운영자의 답, fields: {choice: Option}}
+MoveResult:  {desc: 시간이 걸리는 블록의 결과, fields: {stopped_by: StopReason, pose_at_stop: Pose, elapsed: Seconds, q: JointAngles}}

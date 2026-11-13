@@ -1,0 +1,12 @@
+[project]
+name = "task-studio"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2", "pyyaml"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
